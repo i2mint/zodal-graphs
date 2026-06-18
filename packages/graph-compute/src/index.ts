@@ -10,7 +10,7 @@
  * point-reachability over the dependency edges, so there is no separate provenance engine.
  */
 
-import type { CanonicalGraph, GraphCapabilities, GraphOverlays, OverlayLayer } from '@zodal/graph-core';
+import type { CanonicalGraph, GraphCapabilities, OverlayLayer } from '@zodal/graph-core';
 import { buildIndex, topologicalOrder, type GraphIndex } from './adjacency.js';
 import {
   pathLayer,
@@ -22,6 +22,7 @@ import {
   componentsLayer,
   computeOverlaysFromIndex,
   type OverlayRequest,
+  type OverlayResult,
 } from './overlays.js';
 
 export * from './adjacency.js';
@@ -39,7 +40,7 @@ export interface TraversalEngine {
   cycles(): OverlayLayer | null;
   components(): OverlayLayer;
   topologicalOrder(): string[] | null;
-  overlays(request: OverlayRequest, capabilities?: GraphCapabilities): GraphOverlays;
+  overlays(request: OverlayRequest, capabilities?: GraphCapabilities): OverlayResult;
 }
 
 /** Build a {@link TraversalEngine} for a graph — preferred when issuing several queries. */
@@ -64,6 +65,6 @@ export function computeOverlays(
   graph: CanonicalGraph,
   request: OverlayRequest,
   capabilities?: GraphCapabilities,
-): GraphOverlays {
+): OverlayResult {
   return computeOverlaysFromIndex(buildIndex(graph), request, capabilities);
 }

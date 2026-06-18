@@ -24,12 +24,6 @@ importers:
         specifier: workspace:*
         version: link:../graph-core
     devDependencies:
-      graphology:
-        specifier: ^0.26.0
-        version: 0.26.0(graphology-types@0.24.8)
-      graphology-types:
-        specifier: ^0.24.0
-        version: 0.24.8
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(postcss@8.5.15)(typescript@5.9.3)

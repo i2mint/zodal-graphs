@@ -4,9 +4,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveGraphCapabilities } from '@zodal/graph-core';
+import type { CanonicalGraph } from '@zodal/graph-core';
+import { resolveGraphCapabilities, nodeId, edgeId } from '@zodal/graph-core';
 import { createTraversalEngine, computeOverlays } from '../src/index.js';
-import { dag, cyclic } from './fixtures.js';
+import { dag, cyclic, parallelUndirected } from './fixtures.js';
 
 const rolesWith = (nodes: Record<string, string>, role: string): string[] =>
   Object.keys(nodes)
@@ -34,9 +35,9 @@ describe('reachability-driven overlays on a DAG', () => {
     expect(rolesWith(l.nodes, 'stale')).toEqual(['d', 'e']);
   });
 
-  it('provenance: upstream sources, labelled as a provenance layer', () => {
+  it('provenance: upstream sources, reusing the ancestors layer (research §4.4)', () => {
     const l = eng.provenance('e');
-    expect(l.layer).toBe('provenance');
+    expect(l.layer).toBe('ancestors'); // provenance reuses the declared vocabulary
     expect(l.nodes['e']).toBe('primary');
     expect(rolesWith(l.nodes, 'ancestor')).toEqual(['a', 'b', 'c', 'd']);
   });
@@ -92,26 +93,69 @@ describe('cycle detection on a cyclic graph', () => {
   });
 });
 
-describe('computeOverlays capability gating', () => {
-  it('emits only the requested layers that the capabilities permit', () => {
+describe('computeOverlays capability gating (honest refusal report)', () => {
+  it('emits only permitted layers AND reports the refused ones', () => {
     const caps = resolveGraphCapabilities({ traversal: ['descendants'], hasProvenance: false });
-    const ov = computeOverlays(
+    const { overlays, refused } = computeOverlays(
       dag(),
       { descendantsOf: 'a', ancestorsOf: 'd', provenanceOf: 'e', cycles: true },
       caps,
     );
-    expect(ov.highlights.map((l) => l.layer)).toEqual(['descendants']);
+    expect(overlays.highlights.map((l) => l.layer)).toEqual(['descendants']);
+    // ancestors + cycles refused (not in traversal); provenance refused (hasProvenance false)
+    expect(refused.map((r) => r.request).sort()).toEqual(['ancestorsOf', 'cycles', 'provenanceOf']);
+    expect(refused.find((r) => r.request === 'provenanceOf')?.reason).toBe('provenance');
+    expect(refused.find((r) => r.request === 'ancestorsOf')?.kind).toBe('ancestors');
   });
 
-  it('computes everything requested when no capabilities are supplied', () => {
-    const ov = computeOverlays(dag(), { descendantsOf: 'a', ancestorsOf: 'd' });
-    expect(ov.highlights.map((l) => l.layer).sort()).toEqual(['ancestors', 'descendants']);
+  it('computes everything requested (no refusals) when no capabilities are supplied', () => {
+    const { overlays, refused } = computeOverlays(dag(), { descendantsOf: 'a', ancestorsOf: 'd' });
+    expect(overlays.highlights.map((l) => l.layer).sort()).toEqual(['ancestors', 'descendants']);
+    expect(refused).toEqual([]);
   });
 
   it('gates provenance on hasProvenance', () => {
     const allowed = computeOverlays(dag(), { provenanceOf: 'e' }, resolveGraphCapabilities({ hasProvenance: true }));
-    expect(allowed.highlights.map((l) => l.layer)).toEqual(['provenance']);
+    expect(allowed.overlays.highlights.map((l) => l.layer)).toEqual(['ancestors']);
+    expect(allowed.refused).toEqual([]);
     const blocked = computeOverlays(dag(), { provenanceOf: 'e' }, resolveGraphCapabilities({ hasProvenance: false }));
-    expect(blocked.highlights).toEqual([]);
+    expect(blocked.overlays.highlights).toEqual([]);
+    expect(blocked.refused).toEqual([{ request: 'provenanceOf', reason: 'provenance' }]);
+  });
+});
+
+describe('multigraph & robustness regressions', () => {
+  it('detects a cycle from two parallel UNDIRECTED edges, highlighting BOTH edges', () => {
+    const eng = createTraversalEngine(parallelUndirected());
+    const l = eng.cycles()!;
+    expect(l).not.toBeNull();
+    expect(Object.keys(l.nodes).sort()).toEqual(['a', 'b']);
+    expect(Object.keys(l.edges ?? {}).sort()).toEqual(['e1', 'e2']); // both parallel edges form the 2-cycle
+  });
+
+  it('detects a directed self-loop', () => {
+    const g: CanonicalGraph = {
+      directed: true,
+      multigraph: true,
+      nodes: [{ id: nodeId('a'), kind: 'entity' }],
+      edges: [{ id: edgeId('loop'), source: nodeId('a'), target: nodeId('a') }],
+      graph: {},
+    };
+    const l = createTraversalEngine(g).cycles()!;
+    expect(l.nodes['a']).toBe('path');
+    expect(l.edges?.['loop']).toBe('path');
+  });
+
+  it('cycle detection is depth-safe on a long acyclic chain (no stack overflow)', () => {
+    const N = 20_000;
+    const nodes = Array.from({ length: N }, (_, i) => ({ id: nodeId(`n${i}`), kind: 'entity' as const }));
+    const edges = Array.from({ length: N - 1 }, (_, i) => ({
+      id: edgeId(`e${i}`),
+      source: nodeId(`n${i}`),
+      target: nodeId(`n${i + 1}`),
+    }));
+    const eng = createTraversalEngine({ directed: true, multigraph: false, nodes, edges, graph: {} });
+    expect(eng.cycles()).toBeNull(); // returns null instead of throwing
+    expect(eng.topologicalOrder()).toHaveLength(N);
   });
 });

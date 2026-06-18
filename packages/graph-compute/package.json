@@ -27,12 +27,7 @@
   "dependencies": {
     "@zodal/graph-core": "workspace:*"
   },
-  "peerDependencies": {
-    "graphology": "^0.25.0 || ^0.26.0"
-  },
   "devDependencies": {
-    "graphology": "^0.26.0",
-    "graphology-types": "^0.24.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

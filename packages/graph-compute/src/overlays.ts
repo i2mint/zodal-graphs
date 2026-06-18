@@ -1,32 +1,36 @@
 /**
  * Overlay producers — turn algorithm results into the canonical, renderer-agnostic
  * `GraphOverlays` shape (a set of `{nodeId/edgeId → role}` layers). Computed once here, drawn as
- * highlights on whatever renderer is active (React Flow, sigma, Cytoscape, …) — the #2
- * tool-deciding insight of the research: traversal and provenance are overlays, not per-renderer
- * features.
+ * highlights on whatever renderer is active — the #2 tool-deciding insight of the research:
+ * traversal and provenance are overlays, not per-renderer features.
  *
  * Provenance is not a separate engine: the "downstream impacted / stale" set is forward
- * reachability from the changed nodes, and the "upstream sources" set is backward reachability —
- * both reuse the one primitive in `adjacency.ts`.
+ * reachability from the changed nodes, the "upstream sources" set is backward reachability — both
+ * reuse the one primitive in `adjacency.ts`. Per research §4.4 the provenance/sources overlay
+ * reuses the `'ancestors'` layer name (it is ancestors over the dependency edges), so a renderer
+ * switching on the declared `TraversalKind` vocabulary handles it without a new case.
  */
 
-import type { GraphCapabilities, GraphOverlays, HighlightRole, OverlayLayer } from '@zodal/graph-core';
+import type {
+  GraphCapabilities,
+  GraphOverlays,
+  HighlightRole,
+  OverlayLayer,
+  TraversalKind,
+} from '@zodal/graph-core';
 import type { GraphIndex } from './adjacency.js';
 import { reach, shortestPath, findCycle, connectedComponents } from './adjacency.js';
 
 type RoleMap = Record<string, HighlightRole>;
 
-/** Shortest-path highlight between two nodes (nodes + the edges along the path), or null. */
+/** Shortest-path highlight between two nodes (path nodes + the exact edges traversed), or null. */
 export function pathLayer(index: GraphIndex, source: string, target: string): OverlayLayer | null {
-  const path = shortestPath(index, source, target);
-  if (!path) return null;
+  const walk = shortestPath(index, source, target);
+  if (!walk) return null;
   const nodes: RoleMap = {};
   const edges: RoleMap = {};
-  for (const n of path) nodes[n] = 'path';
-  for (let i = 0; i < path.length - 1; i++) {
-    const edge = index.edgeBetween(path[i], path[i + 1]);
-    if (edge) edges[edge] = 'path';
-  }
+  for (const n of walk.nodes) nodes[n] = 'path';
+  for (const e of walk.edges) edges[e] = 'path';
   return { layer: 'path', nodes, edges };
 }
 
@@ -52,22 +56,19 @@ export function staleLayer(index: GraphIndex, changed: string[]): OverlayLayer {
   return { layer: 'stale', nodes };
 }
 
-/** Upstream provenance / sources of a node (backward reachability, labelled as a provenance layer). */
+/** Upstream provenance / sources of a node — backward reachability, reusing the `ancestors` layer. */
 export function provenanceLayer(index: GraphIndex, node: string): OverlayLayer {
-  return ancestorsLayer(index, node, 'provenance');
+  return ancestorsLayer(index, node, 'ancestors');
 }
 
-/** Highlight one detected cycle, or null if acyclic. */
+/** Highlight one detected cycle (nodes + the edges forming it), or null if acyclic. */
 export function cyclesLayer(index: GraphIndex): OverlayLayer | null {
   const cycle = findCycle(index);
   if (!cycle) return null;
   const nodes: RoleMap = {};
   const edges: RoleMap = {};
-  for (const n of cycle) nodes[n] = 'path';
-  for (let i = 0; i < cycle.length - 1; i++) {
-    const edge = index.edgeBetween(cycle[i], cycle[i + 1]);
-    if (edge) edges[edge] = 'path';
-  }
+  for (const n of cycle.nodes) nodes[n] = 'path';
+  for (const e of cycle.edges) edges[e] = 'path';
   return { layer: 'cycles', nodes, edges };
 }
 
@@ -91,31 +92,64 @@ export interface OverlayRequest {
   components?: boolean;
 }
 
+/** A requested layer the engine refused to compute, and why (honest, like graph-ui's degrade). */
+export interface RefusedOverlay {
+  request: keyof OverlayRequest;
+  reason: 'traversal' | 'provenance';
+  kind?: TraversalKind;
+}
+
+/** The result of an overlay computation: the drawable overlays AND what was refused. */
+export interface OverlayResult {
+  overlays: GraphOverlays;
+  refused: RefusedOverlay[];
+}
+
 /**
- * Compute the requested overlay layers, gated by declared capabilities. When `capabilities` is
- * given, a traversal layer is emitted only if its kind is in `capabilities.traversal`, and
- * provenance only if `capabilities.hasProvenance`. When omitted, everything requested is computed.
+ * Compute the requested overlay layers, gated by declared capabilities, and report any refusals.
+ * A traversal layer is emitted only if its kind is in `capabilities.traversal`; provenance only if
+ * `capabilities.hasProvenance`. When `capabilities` is omitted, everything requested is computed.
+ * Refused layers are returned in `refused` rather than silently dropped — the same honesty
+ * principle as graph-ui's rank-and-degrade.
  */
 export function computeOverlaysFromIndex(
   index: GraphIndex,
   request: OverlayRequest,
   capabilities?: GraphCapabilities,
-): GraphOverlays {
-  const allowKind = (kind: string): boolean =>
-    !capabilities || (capabilities.traversal as readonly string[]).includes(kind);
-  const allowProvenance = !capabilities || capabilities.hasProvenance;
+): OverlayResult {
   const layers: OverlayLayer[] = [];
-  const push = (layer: OverlayLayer | null): void => {
+  const refused: RefusedOverlay[] = [];
+  const kindAllowed = (kind: TraversalKind): boolean => !capabilities || capabilities.traversal.includes(kind);
+
+  const tryKind = (
+    active: boolean,
+    field: keyof OverlayRequest,
+    kind: TraversalKind,
+    produce: () => OverlayLayer | null,
+  ): void => {
+    if (!active) return;
+    if (!kindAllowed(kind)) {
+      refused.push({ request: field, reason: 'traversal', kind });
+      return;
+    }
+    const layer = produce();
     if (layer) layers.push(layer);
   };
 
-  if (request.path && allowKind('path')) push(pathLayer(index, request.path.source, request.path.target));
-  if (request.ancestorsOf && allowKind('ancestors')) push(ancestorsLayer(index, request.ancestorsOf));
-  if (request.descendantsOf && allowKind('descendants')) push(descendantsLayer(index, request.descendantsOf));
-  if (request.stale && allowKind('stale')) push(staleLayer(index, request.stale));
-  if (request.provenanceOf && allowProvenance) push(provenanceLayer(index, request.provenanceOf));
-  if (request.cycles && allowKind('cycles')) push(cyclesLayer(index));
-  if (request.components && allowKind('components')) push(componentsLayer(index));
+  tryKind(!!request.path, 'path', 'path', () => pathLayer(index, request.path!.source, request.path!.target));
+  tryKind(!!request.ancestorsOf, 'ancestorsOf', 'ancestors', () => ancestorsLayer(index, request.ancestorsOf!));
+  tryKind(!!request.descendantsOf, 'descendantsOf', 'descendants', () => descendantsLayer(index, request.descendantsOf!));
+  tryKind(!!request.stale, 'stale', 'stale', () => staleLayer(index, request.stale!));
+  tryKind(!!request.cycles, 'cycles', 'cycles', () => cyclesLayer(index));
+  tryKind(!!request.components, 'components', 'components', () => componentsLayer(index));
 
-  return { highlights: layers };
+  if (request.provenanceOf) {
+    if (!capabilities || capabilities.hasProvenance) {
+      layers.push(provenanceLayer(index, request.provenanceOf));
+    } else {
+      refused.push({ request: 'provenanceOf', reason: 'provenance' });
+    }
+  }
+
+  return { overlays: { highlights: layers }, refused };
 }

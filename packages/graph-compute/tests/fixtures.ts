@@ -37,3 +37,14 @@ export function cyclic(): CanonicalGraph {
     graph: {},
   };
 }
+
+/** Two parallel UNDIRECTED edges between a and b — a genuine 2-cycle that naive parent-skip misses. */
+export function parallelUndirected(): CanonicalGraph {
+  return {
+    directed: false,
+    multigraph: true,
+    nodes: ['a', 'b'].map(n),
+    edges: [e('e1', 'a', 'b'), e('e2', 'a', 'b')],
+    graph: {},
+  };
+}

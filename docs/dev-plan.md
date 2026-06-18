@@ -153,10 +153,17 @@ the build taught us.
   selection rule, `RendererCapabilities`, generators. Seed two paper renderers (React Flow
   caps vs sigma caps) and unit-test that selection + degrade picks correctly across scale/edit
   thresholds. → `/zodal-graphs-dev-registries`.
-- **`@zodal/graph-compute` — traversal/provenance (P2).** graphology import from canonical;
-  the ONE reachability primitive (forward/reverse BFS) powering descendants/stale AND
-  ancestors/provenance; capability-gated `GraphOverlays` emit; `GraphDataProvider` honest
-  capability reporting; custom Tarjan. Defer the huge-scale columnar-overlay fork. → P2b doc.
+- **`@zodal/graph-compute` — traversal/provenance (P2). ✅ built (checkpoint 3, PR #10).**
+  The ONE reachability primitive (forward/reverse BFS) powering descendants/stale AND
+  ancestors/provenance; shortest path, iterative cycle detection, topological order,
+  weakly-connected components; capability-gated `GraphOverlays` emit **with an honest refusal
+  report**. *Deviation from research §3 (recorded):* the index is built **directly from the
+  canonical model** (edge-carrying, dependency-free), not via the graphology adapter — which would
+  deep-clone payloads only to discard them. graphology stays the *rendering* hub (sigma) via
+  graph-core's adapter; overlays are renderer-agnostic by id. **Deferred** (renegotiated from the
+  original P2 scope): custom **Tarjan** (articulation/bridge — research's fallback is server-side
+  networkx), the **`GraphDataProvider`/server-networkx boundary** (research §5), critical-path,
+  MST, community/centrality, and the **huge-scale columnar-overlay fork** (the headline defer). → P2b doc.
 - **`@zodal/graph-react-flow` — typed-port editor (P1).** Custom func-node component (shows
   arg names/types/defaults), `<Handle>` per port (`id = port name`), `makeIsValidConnection`
   driven by `portTypeCompatible`, controlled `{nodes,edges}` state, collapse↔expand. → P1b doc.
