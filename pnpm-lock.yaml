@@ -8,6 +8,18 @@ importers:
 
   .:
     devDependencies:
+      '@zodal/graph-compute':
+        specifier: workspace:*
+        version: link:packages/graph-compute
+      '@zodal/graph-core':
+        specifier: workspace:*
+        version: link:packages/graph-core
+      '@zodal/graph-react-flow':
+        specifier: workspace:*
+        version: link:packages/graph-react-flow
+      '@zodal/graph-ui':
+        specifier: workspace:*
+        version: link:packages/graph-ui
       turbo:
         specifier: ^2.0.0
         version: 2.9.18
@@ -17,6 +29,9 @@ importers:
       vitest:
         specifier: ^3.0.0
         version: 3.2.6
+      zod:
+        specifier: ^4.4.0
+        version: 4.4.3
 
   packages/graph-compute:
     dependencies:

@@ -4,13 +4,19 @@
   "scripts": {
     "build": "turbo build",
     "test": "turbo test",
+    "test:integration": "vitest run --config tests/vitest.config.ts",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck"
   },
   "devDependencies": {
+    "@zodal/graph-compute": "workspace:*",
+    "@zodal/graph-core": "workspace:*",
+    "@zodal/graph-react-flow": "workspace:*",
+    "@zodal/graph-ui": "workspace:*",
     "turbo": "^2.0.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "zod": "^4.4.0"
   },
   "packageManager": "pnpm@9.15.0"
 }
