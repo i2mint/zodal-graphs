@@ -1,4 +1,11 @@
 .DS_Store
 *.log
 node_modules/
-.claude/
+
+# --- Claude / AI tooling ---
+# .claude/ is tracked as shared agent resources (CLAUDE.md, the skills bridge).
+# Ignore only machine-local settings, handoffs, and Claude-written system files.
+.claude/settings.local.json
+.claude/.system/
+.claude/skills/.system/
+.claude/handoffs/
