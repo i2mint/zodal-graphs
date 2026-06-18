@@ -35,37 +35,59 @@ export interface PortTypeRef {
 const WILDCARD_BASES = new Set(['unknown', 'any']);
 
 /**
- * Derive a {@link PortTypeRef} from a Zod schema, reusing `@zodal/core`'s `getZodBaseType` so
- * the facade has one source of truth for "what is this Zod type". Fully guarded: any
- * introspection failure degrades to a permissive wildcard rather than throwing — a model
- * author should never get a crash from an exotic schema.
+ * Bases whose *token alone* fully determines the type, so token equality is a sound
+ * compatibility check. Composite bases (`object`, `array`, `tuple`, `record`, `map`, `set`,
+ * `literal`, `enum`, …) are deliberately EXCLUDED: PortTypeRef does not yet capture their inner
+ * shape/value, so two structurally-disjoint composites (`number[]` vs `string[]`) must NOT be
+ * called compatible under v0's "when in doubt, reject" mandate.
+ */
+const SCALAR_BASES = new Set([
+  'number',
+  'string',
+  'boolean',
+  'bigint',
+  'date',
+  'null',
+  'undefined',
+  'symbol',
+  'int',
+  'float',
+  'nan',
+]);
+
+/** Sentinel base for a schema whose type could not be introspected — compatible only with a
+ *  wildcard, never silently permissive. Distinct from a genuine `unknown`/`any` wildcard. */
+const UNRESOLVED = '__unresolved__';
+
+/**
+ * Derive a {@link PortTypeRef} from a Zod schema. Wrapper flags (optional/nullable/default) and
+ * unions are read from the raw Zod `def` (reliable across zod v4); the leaf base type is read via
+ * `@zodal/core`'s `getZodBaseType` (the facade's single source of truth), falling back to the raw
+ * def and finally to a conservative {@link UNRESOLVED} sentinel. Fully guarded: an unreadable
+ * schema yields a NON-wildcard sentinel — never an accept-anything wildcard.
  */
 export function portTypeRefFromZod(schema: ZodType): PortTypeRef {
   try {
     const def = readDef(schema);
-    // Detect wrappers from the RAW def — never via getZodBaseType, which may itself unwrap
-    // optional/nullable/default and would hide the flag we need to record.
-    const wrapper = rawTypeName(def);
+    // Wrappers & unions come from the RAW def — never via getZodBaseType, which may itself unwrap
+    // optional/nullable/default (hiding the flag we must record) or return a generic fallback.
+    const raw = rawTypeName(def);
 
-    if (wrapper === 'optional') {
-      return { ...portTypeRefFromZodInner(def?.innerType), optional: true };
-    }
-    if (wrapper === 'nullable') {
-      return { ...portTypeRefFromZodInner(def?.innerType), nullable: true };
-    }
-    if (wrapper === 'default' || wrapper === 'prefault') {
-      return portTypeRefFromZodInner(def?.innerType);
+    if (raw === 'optional') return { ...portTypeRefFromZodInner(def?.innerType), optional: true };
+    if (raw === 'nullable') return { ...portTypeRefFromZodInner(def?.innerType), nullable: true };
+    if (raw === 'default' || raw === 'prefault') return portTypeRefFromZodInner(def?.innerType);
+    if (raw === 'union' && Array.isArray(def?.options)) {
+      return { base: 'union', options: (def.options as ZodType[]).map((o) => portTypeRefFromZod(o)) };
     }
 
-    const base = safeBaseType(schema, def);
-    const ref: PortTypeRef = { base };
-    if (WILDCARD_BASES.has(base)) ref.wildcard = true;
-    if (base === 'union' && Array.isArray(def?.options)) {
-      ref.options = (def.options as ZodType[]).map((o) => portTypeRefFromZod(o));
-    }
+    const ref: PortTypeRef = { base: resolveBase(schema, raw) };
+    // A genuine wildcard requires the REAL def type to say `unknown`/`any` — NOT a getZodBaseType
+    // fallback (which returns 'unknown' for unreadable input and would wrongly accept any wire).
+    if (WILDCARD_BASES.has(raw)) ref.wildcard = true;
     return ref;
   } catch {
-    return { base: 'unknown', wildcard: true };
+    // Introspection failed — conservative non-wildcard sentinel, compatible only with itself / a wildcard.
+    return { base: UNRESOLVED };
   }
 }
 
@@ -77,19 +99,24 @@ function rawTypeName(def: ZodDef): string {
 
 function portTypeRefFromZodInner(inner: unknown): PortTypeRef {
   if (inner && typeof inner === 'object') return portTypeRefFromZod(inner as ZodType);
-  return { base: 'unknown', wildcard: true };
+  return { base: UNRESOLVED };
 }
 
-/** Read the base type, preferring @zodal/core; fall back to probing the def. */
-function safeBaseType(schema: ZodType, def: ZodDef): string {
+/** Leaf base: prefer @zodal/core's getZodBaseType; fall back to the raw def; else UNRESOLVED. */
+function resolveBase(schema: ZodType, raw: string): string {
+  const core = coreBaseType(schema);
+  if (core && core !== 'unknown') return core; // a bare 'unknown' from core is a fallback, not trusted
+  if (raw) return raw; // includes a genuine 'unknown' / 'any' (the wildcard flag is set by the caller)
+  return UNRESOLVED;
+}
+
+function coreBaseType(schema: ZodType): string {
   try {
     const t = getZodBaseType(schema);
-    if (typeof t === 'string' && t.length > 0) return t;
+    return typeof t === 'string' ? t : '';
   } catch {
-    /* fall through */
+    return '';
   }
-  const t = def?.type ?? def?.typeName;
-  return typeof t === 'string' ? t.replace(/^Zod/, '').toLowerCase() : 'unknown';
 }
 
 interface ZodDef {
@@ -107,31 +134,48 @@ function readDef(schema: unknown): ZodDef {
 /**
  * v0 connect-time compatibility: can a value leaving `out` legally flow into `into`?
  *
- * Rules (conservative — unknown ⇒ `false`):
- *  - either side is a wildcard (`unknown`/`any`)              → compatible
- *  - `out` may be undefined (optional) but `into` is not     → INcompatible
- *  - `into` is a union                                       → compatible iff `out` fits any member
- *  - `out` is a union                                        → compatible iff every member fits `into`
- *  - `into` is optional/nullable                             → widen (accepts its base type)
- *  - exact base-type match                                   → compatible
- *  - otherwise                                               → INcompatible
+ * Rules (conservative — "when in doubt, reject"):
+ *  1. either side is a wildcard (`unknown`/`any`)            → compatible
+ *  2. `out` may be `undefined` (optional) and `into` is not  → INcompatible  (undefined would leak)
+ *  3. `out` may be `null` (nullable) and `into` is not       → INcompatible  (null would leak)
+ *  4. both are unions                                        → every source member fits some target member
+ *  5. only `into` is a union                                 → `out` fits some target member
+ *  6. only `out` is a union                                  → every source member fits `into`
+ *  7. same SCALAR base (number/string/…)                     → compatible
+ *  8. otherwise (incl. composite bases & `unresolved`)       → INcompatible
+ *
+ * The optional/nullable leak guards (2,3) run BEFORE the union branches so they cannot be
+ * bypassed by a union target, and union *members* keep their own flags so a nullable member is
+ * re-checked on recursion.
  */
 export function portTypeCompatible(out: PortTypeRef, into: PortTypeRef): boolean {
   if (out.wildcard || into.wildcard) return true;
-
-  // An optional source could be `undefined`; a non-optional target cannot accept that.
   if (out.optional && !into.optional) return false;
+  if (out.nullable && !into.nullable) return false;
 
-  if (into.options && into.options.length > 0) {
-    return into.options.some((opt) => portTypeCompatible(stripFlags(out), opt));
+  const o = stripFlags(out);
+  const i = stripFlags(into);
+
+  const oUnion = o.options && o.options.length > 0;
+  const iUnion = i.options && i.options.length > 0;
+
+  if (oUnion && iUnion) {
+    return o.options!.every((a) => i.options!.some((b) => portTypeCompatible(a, b)));
   }
-  if (out.options && out.options.length > 0) {
-    const intoBaseRef = stripFlags(into);
-    return out.options.every((opt) => portTypeCompatible(opt, intoBaseRef));
+  if (iUnion) {
+    return i.options!.some((opt) => portTypeCompatible(o, opt));
   }
-  return out.base === into.base;
+  if (oUnion) {
+    return o.options!.every((opt) => portTypeCompatible(opt, i));
+  }
+
+  // Bare token equality is sound ONLY for scalar bases; composite/unresolved bases need shape
+  // info we don't yet carry, so they are conservatively rejected.
+  return o.base === i.base && SCALAR_BASES.has(o.base);
 }
 
+/** Clear optional/nullable (already leak-checked) while keeping base / options / wildcard. */
 function stripFlags(ref: PortTypeRef): PortTypeRef {
+  if (!ref.optional && !ref.nullable) return ref;
   return { ...ref, optional: false, nullable: false };
 }

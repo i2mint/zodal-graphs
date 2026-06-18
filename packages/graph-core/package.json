@@ -8,14 +8,12 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
     },
     "./graphology": {
-      "types": "./dist/graphology.d.ts",
-      "import": "./dist/graphology.js",
-      "require": "./dist/graphology.cjs"
+      "import": { "types": "./dist/graphology.d.ts", "default": "./dist/graphology.js" },
+      "require": { "types": "./dist/graphology.d.cts", "default": "./dist/graphology.cjs" }
     }
   },
   "publishConfig": {

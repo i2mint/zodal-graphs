@@ -73,12 +73,15 @@ jobs:
       - name: Publish packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # pnpm -r publish skips package versions already on the registry without erroring, so a
+        # real failure (bad token, registry 5xx) is NOT swallowed — the job fails and no tag is
+        # pushed for a release that never reached npm.
         run: |
           FORCE=""
           if [[ "${{ github.event.head_commit.message }}" == *"[force publish]"* ]]; then
             FORCE="--no-git-checks"
           fi
-          pnpm -r publish --access public $FORCE || true
+          pnpm -r publish --access public $FORCE
 
       - name: Configure SSH for git push
         run: |
@@ -89,6 +92,9 @@ jobs:
           git remote set-url origin git@github.com:${{ github.repository }}.git
 
       - name: Tag release
+        # NOTE: the repo-wide tag is derived from graph-core, the lead package. This is correct
+        # while graph-core is the version anchor; once packages version independently, switch to
+        # per-package tags (e.g. @zodal/graph-core@X). See docs/dev-plan.md.
         run: |
           VERSION=$(node -e "console.log(require('./packages/graph-core/package.json').version)")
           git config user.name "github-actions[bot]"

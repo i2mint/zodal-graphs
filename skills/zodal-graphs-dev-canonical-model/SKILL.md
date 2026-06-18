@@ -92,6 +92,27 @@ validity). It feeds React Flow's `isValidConnection`. **Start conservative** (ex
 base-type match + wildcard); widen toward covariance/refinements/unions only when a real
 case demands it. See `zodal-graphs-dev-registries` for how it plugs into the editor.
 
+## Adapter invariants (learned the hard way — hold these for every new adapter)
+
+A round-trip benchmark passing on the *happy-path* fixture is not enough; these invariants
+came out of an adversarial review and are now non-negotiable for any `toX`/`fromX` pair:
+
+1. **Never rely on a string separator that can appear in user data.** ELK packs endpoints as
+   `"<node>::<port>"` — but ids/ports can *contain* `::`. Carry the authoritative endpoint
+   (`source`/`target`/`sourcePort`/`targetPort`) **structurally** in a namespaced field; treat
+   any packed string as a hint, parsed back only for foreign input.
+2. **Reconstruct `directed`/`multigraph`/`graph` meta.** If the target format has no slot for
+   them (React Flow, ELK), stash them in a namespaced `zodal` field and restore on the way in —
+   don't silently default (a flipped `multigraph` flag corrupts downstream graphology).
+3. **Build graphology as `multi: true` always**, and preserve the *original* `multigraph` flag
+   out-of-band — otherwise a legitimate parallel/anti-parallel edge makes `addEdgeWithKey` throw.
+4. **Deep-clone mutable sub-objects** (`ports`, `data`, graph meta) at the adapter boundary, in
+   AND out — never alias the caller's objects into a live store (or vice-versa).
+5. **Guard foreign input**: reject empty/hyperedge endpoints with a clear error rather than
+   coercing to a dangling `''` node.
+6. **Validate ids at the boundary**: `nodeId`/`edgeId`/`portId` reject empty strings, so a
+   malformed wire fails loudly instead of producing a dangling reference.
+
 ## Known lossy edges (document, don't hide)
 
 - GraphML `<port>` is weakly/inconsistently tool-supported; **GEXF has no ports.** Preserve

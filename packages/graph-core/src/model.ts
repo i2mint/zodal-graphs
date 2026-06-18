@@ -27,9 +27,18 @@ export type NodeId = Brand<string, 'NodeId'>;
 export type PortId = Brand<string, 'PortId'>;
 export type EdgeId = Brand<string, 'EdgeId'>;
 
-export const nodeId = (id: string): NodeId => id as NodeId;
-export const portId = (id: string): PortId => id as PortId;
-export const edgeId = (id: string): EdgeId => id as EdgeId;
+/** Smart constructors — validate non-empty so a malformed wire id fails loudly at the boundary
+ *  rather than silently producing a dangling reference. (They are the only way to brand an id.) */
+export const nodeId = (id: string): NodeId => brandId('nodeId', id) as NodeId;
+export const portId = (id: string): PortId => brandId('portId', id) as PortId;
+export const edgeId = (id: string): EdgeId => brandId('edgeId', id) as EdgeId;
+
+function brandId(kind: string, id: string): string {
+  if (typeof id !== 'string' || id.length === 0) {
+    throw new Error(`${kind}: id must be a non-empty string (got ${JSON.stringify(id)})`);
+  }
+  return id;
+}
 
 // ===========================================================================
 // Node / port / edge shapes
@@ -84,7 +93,10 @@ export interface FuncRef {
   hash?: string;
 }
 
-export type Callable = (...args: never[]) => unknown;
+/** An opaque, invocable function. Intentionally `unknown[]` (not `never[]`) so a resolved
+ *  callable can actually be CALLED by the runtime; a stricter signature belongs on the concrete
+ *  resolver, not on this contract. */
+export type Callable = (...args: unknown[]) => unknown;
 
 /** Maps a `FuncRef` to a runnable callable. Implemented by `@zodal/graph-runtime` consumers. */
 export type FuncRefResolver = (funcRef: FuncRef) => Callable | Promise<Callable>;

@@ -114,20 +114,29 @@ adapter with zero port-edge loss — and stand up the monorepo + CI so packages 
    `canonical → X → canonical` through graphology, react-flow, ELK. **Any dropped
    port-level edge fails the build.** If it fails, the model is wrong — fix before proceeding.
 9. **`defineGraph` skeleton** (`src/define-graph.ts`): `defineGraph({ nodeTypes, edgeTypes,
-   affordances })` → `GraphDefinition` with `getCapabilities()`. Reuse zodal's affordance
-   inference; extend the affordance registry (WeakMap, register-before-wrap) with graph keys.
-10. **`portTypeCompatible` v0** (`src/port-type.ts`): conservative Zod-v4 rule (exact
-    base-type match + wildcard). Pure; no renderer dep. Unit-tested as facade logic.
+   affordances })` → `GraphDefinition` with `getCapabilities()`. *Scope note:* checkpoint 1
+   resolves graph-LEVEL capabilities from declared affordances only. Per-field/per-port
+   affordance inference (reusing zodal's `defineCollection` + the affordance registry with
+   register-before-wrap) and `z.toJSONSchema()` emission land in **Horizon 2** with the
+   generators, where the first real Zod node schema with `.meta()` exists.
+10. **`portTypeCompatible` v0** (`src/port-type.ts`): conservative Zod-v4 rule (scalar
+    base-type match + wildcard + optional/nullable leak guards + unions; composites rejected).
+    Pure; no renderer dep. Unit-tested as facade logic.
 
 ### 4.2 Checkpoint acceptance criteria
 
-- [ ] Port-fidelity benchmark green across all three adapters (zero port-edge loss).
+- [ ] Port-fidelity benchmark green across all adapters (serializer/graphology/React Flow/ELK),
+      zero port-edge loss — including adversarial cases (parallel non-multigraph edges,
+      undirected graphs, ids/ports containing the ELK separator).
 - [ ] `defineGraph` returns honest `GraphCapabilities` for a portless graph and a typed-port
       executable graph.
-- [ ] `pnpm build && pnpm typecheck && pnpm test` green; dual CJS/ESM + `.d.ts` emitted.
+- [ ] `pnpm build && pnpm typecheck && pnpm test` green; dual CJS/ESM + `.d.ts`/`.d.cts` emitted
+      with a correct conditional `exports` map.
 - [ ] CI `validate` job runs on PR (publish job present but **never triggered** — no `[publish]`).
-- [ ] `portTypeCompatible` v0 unit-tested; `toJSONSchema()` stays in the representable subset.
-- [ ] Adversarial critic pass applied (Phase-4 protocol below).
+- [ ] `portTypeCompatible` v0 unit-tested, incl. the null/optional leak guards and composite
+      rejection. (The `toJSONSchema()` representable-subset check moves to Horizon 2 — no Zod
+      schema is emitted in this checkpoint.)
+- [ ] Adversarial critic pass applied (Phase-4 protocol below); critical/high findings resolved.
 
 ### 4.3 Checkpoint exit → next
 
