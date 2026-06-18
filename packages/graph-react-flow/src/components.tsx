@@ -1,25 +1,31 @@
 /**
- * Thin React shells — the visible surface of the typed-port editor.
+ * The React shells — the visible surface of the typed-port editor.
  *
- * Deliberately minimal this checkpoint (headless-first): `FuncNode` renders one `<Handle>` per
- * port (handle id = port name, so `targetHandle === targetPort`), and `GraphFlowView` wires
- * `toReactFlow` + `makeIsValidConnection` into `<ReactFlow>`. Real layout, styling, collapse↔expand,
- * and the value-watch overlay are deferred — the tested substance is the headless core.
+ * Still thin this checkpoint (visual styling, real layout, collapse↔expand, and the value-watch
+ * overlay are deferred), but genuinely editable: `GraphFlowView` seeds React Flow's controlled
+ * node/edge state, wires `onConnect` through the generated `isValidConnection`, and memoizes its
+ * derivations. `FuncNode` renders one `<Handle>` per port (handle id = port name, so
+ * `targetHandle === targetPort`).
  *
- * Consumers must import `@xyflow/react/dist/style.css` (or supply their own) for the canvas to render.
+ * Consumers must import `@xyflow/react/dist/style.css` (or supply their own) AND give the view a
+ * parent with a definite height — React Flow renders into its parent's box.
  */
 
 import {
+  addEdge,
   Handle,
   Position,
   ReactFlow,
+  useEdgesState,
+  useNodesState,
   type Edge,
   type IsValidConnection as RFIsValidConnection,
   type Node,
   type NodeProps,
   type NodeTypes,
+  type OnConnect,
 } from '@xyflow/react';
-import type { ReactElement } from 'react';
+import { useCallback, useMemo, type ReactElement } from 'react';
 import type { CanonicalGraph, GraphCapabilities, ReactFlowNodeData } from '@zodal/graph-core';
 import { toReactFlow } from '@zodal/graph-core';
 import { makeIsValidConnection } from './is-valid-connection.js';
@@ -52,24 +58,53 @@ export interface GraphFlowViewProps {
 
 /** Render a canonical graph as an editable React Flow canvas with generated connection validation. */
 export function GraphFlowView({ graph, capabilities }: GraphFlowViewProps): ReactElement {
-  const rf = toReactFlow(graph);
-  // React Flow requires a position on every node; a default stack stands in for a real layout pass.
-  const nodes: Node[] = rf.nodes.map((n, i) => ({
-    id: n.id,
-    type: 'func',
-    position: n.position ?? { x: 0, y: i * 80 },
-    data: n.data as unknown as Record<string, unknown>,
-  }));
-  const edges: Edge[] = rf.edges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    sourceHandle: e.sourceHandle ?? null,
-    targetHandle: e.targetHandle ?? null,
-  }));
-  // Our predicate takes a Connection; React Flow may also pass an Edge (a superset of the fields we
-  // read), so the cast is sound.
-  const isValidConnection = makeIsValidConnection(graph, capabilities) as RFIsValidConnection;
+  const initial = useMemo(() => toReactFlow(graph), [graph]);
 
-  return <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} isValidConnection={isValidConnection} fitView />;
+  const seedNodes = useMemo<Node[]>(
+    () =>
+      initial.nodes.map((n, i) => ({
+        id: n.id,
+        type: n.type ?? 'func', // preserve the canonical node type; default to the func shell
+        position: n.position ?? { x: 0, y: i * 80 }, // default stack — a real layout pass is deferred
+        data: n.data as unknown as Record<string, unknown>,
+      })),
+    [initial],
+  );
+  const seedEdges = useMemo<Edge[]>(
+    () =>
+      initial.edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle ?? null,
+        targetHandle: e.targetHandle ?? null,
+      })),
+    [initial],
+  );
+
+  const [nodes, , onNodesChange] = useNodesState(seedNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(seedEdges);
+
+  // Generated from the canonical port types; assignable to React Flow's predicate without a cast
+  // because our Connection covers the Edge | Connection it passes.
+  const isValidConnection: RFIsValidConnection = useMemo(
+    () => makeIsValidConnection(graph, capabilities),
+    [graph, capabilities],
+  );
+  const onConnect = useCallback<OnConnect>((connection) => setEdges((eds) => addEdge(connection, eds)), [setEdges]);
+
+  return (
+    <div className="zodal-graph-flow" style={{ width: '100%', height: '100%' }}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        isValidConnection={isValidConnection}
+        fitView
+      />
+    </div>
+  );
 }

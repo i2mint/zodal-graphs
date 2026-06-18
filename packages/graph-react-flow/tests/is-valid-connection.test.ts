@@ -5,7 +5,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveGraphCapabilities } from '@zodal/graph-core';
+import type { CanonicalGraph } from '@zodal/graph-core';
+import { resolveGraphCapabilities, nodeId } from '@zodal/graph-core';
 import { makeIsValidConnection, lookupPort, type Connection } from '../src/is-valid-connection.js';
 import { portGraph } from './fixtures.js';
 
@@ -52,10 +53,49 @@ describe('makeIsValidConnection (typed ports + validation)', () => {
   });
 
   it('honours a custom port-compatibility function', () => {
-    const always = makeIsValidConnection(portGraph(), typed, () => true);
+    const always = makeIsValidConnection(portGraph(), typed, { compatible: () => true });
     expect(always(conn('f1', 'out', 'f2', 'y'))).toBe(true); // custom fn permits the string target
-    const never = makeIsValidConnection(portGraph(), typed, () => false);
+    const never = makeIsValidConnection(portGraph(), typed, { compatible: () => false });
     expect(never(conn('f1', 'out', 'f2', 'x'))).toBe(false);
+  });
+
+  it('can reject untyped ports when allowUntypedPorts is false', () => {
+    const strict = makeIsValidConnection(portGraph(), typed, { allowUntypedPorts: false });
+    expect(strict(conn('f1', 'out', 'f3', 'in'))).toBe(false); // f3.in has no declared type
+  });
+});
+
+describe('makeIsValidConnection — adversarial cases', () => {
+  const valid = makeIsValidConnection(portGraph(), typed);
+
+  it('rejects a self-connection (same-node dependency cycle)', () => {
+    expect(valid(conn('f2', 'out', 'f2', 'x'))).toBe(false); // f2.out → f2.x
+    expect(valid(conn('f1', null, 'f1', null))).toBe(false); // null/null self-loop
+  });
+
+  it('rejects out→out direction confusion (target handle names an out-port)', () => {
+    expect(valid(conn('f1', 'out', 'f2', 'out'))).toBe(false); // f2.out is an OUT port, not an input
+  });
+
+  it('treats an Edge-shaped arg (extra fields) the same as a Connection', () => {
+    const edgeLike = { id: 'e', data: {}, source: 'f1', sourceHandle: 'out', target: 'f2', targetHandle: 'x' };
+    expect(valid(edgeLike)).toBe(true);
+    expect(valid({ ...edgeLike, targetHandle: 'y' })).toBe(false); // number → string
+  });
+
+  it('rejects a connection to a zero-port node with a null handle', () => {
+    const g: CanonicalGraph = {
+      directed: true,
+      multigraph: true,
+      nodes: [
+        { id: nodeId('src'), kind: 'func', ports: [{ port: 'out', direction: 'out', type: { base: 'number' } }] },
+        { id: nodeId('bare'), kind: 'entity' }, // no ports
+      ],
+      edges: [],
+      graph: {},
+    };
+    const v = makeIsValidConnection(g, typed);
+    expect(v(conn('src', 'out', 'bare', null))).toBe(false);
   });
 });
 

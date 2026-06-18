@@ -19,21 +19,33 @@ import {
   type GraphRendererEntry,
 } from '@zodal/graph-ui';
 
-/** React Flow's honest self-description: a small-rich SVG editor with first-class typed handles. */
+/**
+ * React Flow's honest self-description: a small-rich SVG editor with first-class typed handles.
+ *
+ * Capabilities report only what this package actually delivers NOW (the honesty principle that
+ * makes graph-ui's degrade report trustworthy). Not yet built ⇒ reported `false`/omitted, so a
+ * graph that needs them is degraded honestly rather than silently mis-served:
+ *  - `compoundNodes` (collapse↔expand), `watchesValues` (value overlay), `provenanceOverlay`
+ *    (overlay drawing) are all deferred → `false`;
+ *  - `traversalOverlays` lists only the overlay kinds `@zodal/graph-compute` can emit as layers.
+ */
 export const reactFlowCapabilities: RendererCapabilities = {
   renderer: 'react-flow',
   typedPorts: true,
   validatesConnections: true,
   editing: true,
-  compoundNodes: true,
+  compoundNodes: false, // collapse↔expand not yet implemented (deferred — research §5 risk 3)
   directed: true,
   undirected: true,
   multigraph: true,
-  provenanceOverlay: true,
-  watchesValues: true,
+  provenanceOverlay: false, // no overlay→canvas drawing path yet (Horizon 3+)
+  watchesValues: false, // value-watch overlay deferred (Horizon 3+, P6A)
   intervals: false,
-  traversalOverlays: ['path', 'ancestors', 'descendants', 'stale', 'cycles', 'topological', 'critical-path'],
+  // Only the kinds graph-compute actually emits as overlay layers today.
+  traversalOverlays: ['path', 'ancestors', 'descendants', 'stale', 'cycles', 'components'],
   views: ['node-link'],
+  // React Flow renders to SVG/DOM, so it stays comfortable into the low thousands of nodes; 2000 is
+  // a benchmark default for the "small" scaleClass, to measure, not a hard limit.
   maxComfortableNodes: 2000,
   layoutEngines: ['dagre', 'elk'],
   rendering: 'svg',

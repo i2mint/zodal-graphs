@@ -11,16 +11,20 @@ predicate from the graph's Zod-derived port types via graph-core's `portTypeComp
 ## Install
 
 ```bash
-pnpm add @zodal/graph-react-flow @xyflow/react react
+pnpm add @zodal/graph-react-flow @xyflow/react react react-dom
 ```
 
-`@zodal/graph-core` and `@zodal/graph-ui` come transitively; `@xyflow/react` and `react` are peers.
-Import `@xyflow/react/dist/style.css` for the canvas to render.
+`@zodal/graph-core` and `@zodal/graph-ui` come transitively; `@xyflow/react`, `react`, and
+`react-dom` are peers. Import `@xyflow/react/dist/style.css`, and give the view a parent with a
+definite height — React Flow renders into its parent's box.
 
 ## Headless core (the substance)
 
+Import from the **`/headless`** subpath to use the validation core / registry entry with **no React
+or @xyflow/react dependency** (e.g. a Node validation script, or graph-ui's pure capability ranking):
+
 ```ts
-import { makeIsValidConnection, createReactFlowRendererEntry, reactFlowCapabilities } from '@zodal/graph-react-flow';
+import { makeIsValidConnection, createReactFlowRendererEntry, reactFlowCapabilities } from '@zodal/graph-react-flow/headless';
 
 // Generate React Flow's isValidConnection from the canonical graph + its capabilities:
 const isValidConnection = makeIsValidConnection(graph, graphDef.getCapabilities());
@@ -45,10 +49,13 @@ import '@xyflow/react/dist/style.css';
 
 ## Scope (this checkpoint)
 
-**Built + tested:** `makeIsValidConnection` + `lookupPort` (the headless P1 seam), the honest
-`reactFlowCapabilities`, and the graph-ui registry entry. **Thin shells:** `FuncNode`, `GraphFlowView`
-(typecheck + build only — not render-tested). **Deferred:** real layout (dagre/ELK), styling,
-collapse↔expand of a sub-DAG into a reusable component, the value-watch execution overlay, and
+**Built + tested:** `makeIsValidConnection` + `lookupPort` (the headless P1 seam — rejects
+type-incompatible wires, unknown ports, and self-connections), the **honest** `reactFlowCapabilities`
+(it reports `false` for `compoundNodes`/`watchesValues`/`provenanceOverlay` — not yet built — so
+graph-ui degrades honestly), and the graph-ui registry entry. **Shells:** `FuncNode` + an editable
+`GraphFlowView` (seeds controlled state, wires `onConnect` through `isValidConnection`) — typecheck +
+build only, not render-tested. **Deferred:** real layout (dagre/ELK), styling, collapse↔expand of a
+sub-DAG into a reusable component, the value-watch execution overlay, provenance overlay drawing, and
 component render tests.
 
 ## Status

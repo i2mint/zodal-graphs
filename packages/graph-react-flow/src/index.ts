@@ -6,11 +6,10 @@
  * driven by graph-core's `portTypeCompatible`). Register it into a `@zodal/graph-ui` registry with
  * `createReactFlowRendererEntry`.
  *
- * Headless core (`makeIsValidConnection`, `lookupPort`, `reactFlowCapabilities`,
- * `createReactFlowRendererEntry`) needs no React; the `FuncNode` / `GraphFlowView` components are the
- * thin visible shell.
+ * This root entry pulls React + @xyflow/react (it re-exports the components). For the React-free
+ * core (`makeIsValidConnection`, `lookupPort`, `reactFlowCapabilities`,
+ * `createReactFlowRendererEntry`), import `@zodal/graph-react-flow/headless` instead.
  */
 
-export * from './is-valid-connection.js';
-export * from './capabilities.js';
+export * from './headless.js';
 export * from './components.js';

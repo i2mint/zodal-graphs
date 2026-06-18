@@ -10,8 +10,13 @@
     ".": {
       "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
       "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
+    },
+    "./headless": {
+      "import": { "types": "./dist/headless.d.ts", "default": "./dist/headless.js" },
+      "require": { "types": "./dist/headless.d.cts", "default": "./dist/headless.cjs" }
     }
   },
+  "sideEffects": false,
   "publishConfig": {
     "access": "public"
   },
@@ -30,12 +35,15 @@
   },
   "peerDependencies": {
     "@xyflow/react": "^12.0.0",
-    "react": "^18.0.0 || ^19.0.0"
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@xyflow/react": "^12.11.0",
     "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
