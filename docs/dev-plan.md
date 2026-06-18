@@ -53,6 +53,7 @@ Names are provisional until the first package lands.
 | **`@zodal/graph-ui`** | renders + mappings registries, `RendererCapabilities`, graph-aware testers + PRIORITY bands, capability-ranked **selection rule**, headless generators | `@zodal/graph-core`, `@zodal/ui` (peer) | **2** |
 | **`@zodal/graph-compute`** | traversal + provenance overlay engine (graphology-*), ~50-line Tarjan, reachability primitive, `GraphOverlays` emit, server-boundary contract | `@zodal/graph-core`, `graphology` | **2** |
 | **`@zodal/graph-react-flow`** | React Flow typed-port **editor** renderer; `makeIsValidConnection` wiring; collapse↔expand | `@zodal/graph-core`, `@zodal/graph-ui`, `@xyflow/react`+`react` (peer) | **2–3** |
+| **`@zodal/graph-runtime`** | in-browser dataflow **execution engine** — topo-order run, scope, step, incremental downstream recompute, value-watch events; consumes a `FuncRefResolver` (pure-TS direct; Python via Pyodide/WASM or backend) | `@zodal/graph-core` | **3–4** |
 | `@zodal/graph-sigma`, `@zodal/graph-cosmos`, `@zodal/graph-deck` | large-sparse / GPU / point-cloud renderers | core + ui + the lib (peer) | **3** |
 | `@zodal/graph-table` (or reuse `zodal-ui-shadcn`) | table / matrix / form lenses + `activeView` switching | core + ui + TanStack + RHF/shadcn | **3** |
 | `@zodal/graph-timeline` | bespoke ELAN-style interval-tier timeline + Allen relations | core + `@visx/brush` + interval libs | **4 (bespoke)** |
@@ -92,8 +93,11 @@ adapter with zero port-edge loss — and stand up the monorepo + CI so packages 
    emits `dist/index.{js,cjs,d.ts}`; `pnpm typecheck` clean.
 3. **Canonical model types** (`src/model.ts`): `CanonicalGraph`, `GraphNode` (`kind:
    'var'|'func'|'entity'`), `GraphPort`, `GraphEdge` (with `sourcePort`/`targetPort`),
-   `GraphMeta`, branded ids (`NodeId`/`PortId`/`EdgeId`). *Acceptance:* a portless entity
-   graph and a meshed-style bipartite func graph both type-check as `CanonicalGraph`.
+   `GraphMeta`, branded ids (`NodeId`/`PortId`/`EdgeId`). Plus the **execution-ready**
+   `funcRef` shape (`{ ref: string; lang: 'ts'|'py'|string; hash?: string }`) and the
+   `FuncRefResolver` contract type (`(funcRef) => Callable | Promise<Callable>`) — types only;
+   the engine is `@zodal/graph-runtime` (Horizon 3–4). *Acceptance:* a portless entity graph
+   and a meshed-style bipartite func graph (with funcRefs) both type-check as `CanonicalGraph`.
 4. **Capabilities vocab** (`src/capabilities.ts`): `GraphCapabilities`,
    `DEFAULT_GRAPH_CAPABILITIES`, `RendererCapabilities`, `GraphView`, `TraversalKind`.
 5. **Presentation layer types** (`src/presentation.ts`): `GraphOverlays` (`{nodeId/edgeId →
@@ -187,16 +191,32 @@ the build taught us.
 - Monorepo + `pnpm -r publish`, `[publish]`-gated CI, **no changesets**, manual version bumps
   (modeled on zodal).
 - Publish under the `@zodal` org; packages named `@zodal/graph-*`.
+- **Executor boundary — DECIDED (owner, 2026-06-18): full in-browser execution is a
+  first-class goal.** The TS facade is not merely an editor/viewer — it aims to *run* graphs
+  in the browser. Consequences carried into the design: (a) the canonical model's `funcRef`
+  carries a `lang` tag (`'ts'|'py'|…`) and resolution metadata so a **`FuncRefResolver`**
+  contract can map a `funcRef` to a callable; pure-TS funcRefs resolve to JS functions and
+  execute directly, Python-backed funcRefs resolve via a consumer-supplied resolver
+  (in-browser via Pyodide/WASM or delegated to a backend). (b) A dedicated
+  **`@zodal/graph-runtime`** package owns the dataflow engine (topo-order execution, scope,
+  step, incremental downstream recompute, value-watch events) — it consumes the canonical
+  model + `FuncRefResolver`. (c) P1 connection-validation matters *more* (invalid wires
+  become runtime errors), so `portTypeCompatible` is load-bearing, not cosmetic. (d) P6A
+  (dataflow value-watch) is a first-class surface, not optional. **Checkpoint 1 impact:** the
+  `funcRef`/`FuncRefResolver` *types* land in `@zodal/graph-core` now; the engine itself is
+  Horizon 3–4. See the package map (`@zodal/graph-runtime`) and §6.
 
 **Open — working default lets building proceed; owner's call to change:**
-1. **Executor boundary.** *Default:* the TS facade is **editor/viewer/overlay only** for
-   Python-backed (`funcRef`) graphs; an optional minimal engine may execute **pure-TS**
-   graphs. Affects P1 validation depth and P6A. *Does not block checkpoint 1.*
-2. **Matrix surface.** *Default:* **build thin heat-cell on TanStack** (preserves the
+1. **Matrix surface.** *Default:* **build thin heat-cell on TanStack** (preserves the
    cross-lens selection bridge) over adopting FINOS Perspective (forks the data pipeline).
    Far-horizon (P5); non-blocking.
-3. **`portTypeCompatible` depth.** *Default:* start conservative (exact base-type + wildcard),
-   widen toward covariance/refinements/unions only when a real case demands it.
+2. **`portTypeCompatible` depth.** *Default:* start conservative (exact base-type + wildcard),
+   widen toward covariance/refinements/unions only when a real case demands it. (Now
+   load-bearing per the execution decision — widen sooner if runtime type errors demand it.)
+3. **Python `funcRef` resolution strategy.** *Default (deferred to `@zodal/graph-runtime`):*
+   support a pluggable `FuncRefResolver` with two reference implementations — Pyodide/WASM
+   (fully in-browser) and a backend-delegating resolver — chosen by the consumer. Not needed
+   until the runtime package; flagged so the `funcRef` model shape stays resolver-ready now.
 
 ---
 

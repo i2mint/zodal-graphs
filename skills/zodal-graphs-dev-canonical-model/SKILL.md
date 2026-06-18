@@ -96,9 +96,13 @@ case demands it. See `zodal-graphs-dev-registries` for how it plugs into the edi
 
 - GraphML `<port>` is weakly/inconsistently tool-supported; **GEXF has no ports.** Preserve
   ports in attributes and document the loss in the adapter.
-- `funcRef` is a *reference* (qualname / import-path / content-hash), not the function.
-  Round-tripping a runnable meshed DAG needs a consumer-supplied resolver — the TS facade is
-  likely editor/viewer only (confirm with the executor-boundary decision in `docs/dev-plan.md`).
+- `funcRef` is a *reference* (qualname / import-path / content-hash), not the function. The
+  model carries `{ ref, lang: 'ts'|'py'|…, hash? }` plus a `FuncRefResolver` contract type
+  (`(funcRef) => Callable | Promise<Callable>`). **Decided (owner): full in-browser execution
+  is a first-class goal** — pure-TS funcRefs resolve to JS and run directly; Python-backed
+  funcRefs resolve via a consumer-supplied resolver (Pyodide/WASM or backend). The engine
+  lives in `@zodal/graph-runtime`; **only the `funcRef`/`FuncRefResolver` types belong in
+  `graph-core`.** Keep the model resolver-ready (don't bake a single execution strategy in).
 
 ## Docs routed into this skill
 
