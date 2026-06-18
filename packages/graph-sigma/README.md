@@ -11,11 +11,14 @@ runs on) and draws renderer-agnostic overlays by node/edge id.
 ## Install
 
 ```bash
-pnpm add @zodal/graph-sigma sigma graphology react react-dom
+pnpm add @zodal/graph-sigma sigma graphology react
 ```
 
 `@zodal/graph-core` and `@zodal/graph-ui` come transitively; `sigma`, `graphology`, and `react` are
-peers. Give the view a parent with a definite height.
+peers (no `react-dom` — `SigmaView` uses only `react` hooks). Give the view a parent with a definite
+height. `SigmaView` creates the Sigma instance once per `graph` and updates overlays live (the camera
+is preserved across overlay changes); pass referentially-stable `overlays`/`styleOptions` (e.g.
+`useMemo`) to avoid needless reducer refreshes.
 
 ## Headless core (no React/sigma) — `@zodal/graph-sigma/headless`
 
