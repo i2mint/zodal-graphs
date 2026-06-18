@@ -18,6 +18,22 @@ importers:
         specifier: ^3.0.0
         version: 3.2.6
 
+  packages/graph-compute:
+    dependencies:
+      '@zodal/graph-core':
+        specifier: workspace:*
+        version: link:../graph-core
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(postcss@8.5.15)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6
+
   packages/graph-core:
     devDependencies:
       '@zodal/core':
