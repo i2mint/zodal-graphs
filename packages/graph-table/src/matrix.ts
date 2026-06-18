@@ -34,10 +34,10 @@ export function toAdjacencyMatrix(graph: CanonicalGraph, options: MatrixOptions 
   for (const edge of graph.edges) {
     const i = index.get(edge.source);
     const j = index.get(edge.target);
-    if (i === undefined || j === undefined) continue;
-    const weight = options.weight ? toNumber((edge.data as Record<string, unknown> | undefined)?.[options.weight]) : 1;
+    if (i === undefined || j === undefined) continue; // edge to an undeclared node — skipped
+    const weight = options.weight ? toWeight((edge.data as Record<string, unknown> | undefined)?.[options.weight]) : 1;
     cells[i][j] += weight;
-    if (undirected) cells[j][i] += weight;
+    if (undirected && i !== j) cells[j][i] += weight; // don't double-count a self-loop on the diagonal
   }
 
   return { order, cells };
@@ -61,31 +61,38 @@ export function seriate(matrix: AdjacencyMatrix, method: SeriationMethod = 'cuth
 
 // === internals ============================================================
 
+/** Adjacency by edge EXISTENCE (`cell !== 0`), so zero/negative-weighted real edges still count. */
+function isLinked(matrix: AdjacencyMatrix, i: number, j: number): boolean {
+  return i !== j && (matrix.cells[i][j] !== 0 || matrix.cells[j][i] !== 0);
+}
+
 function nodeDegrees(matrix: AdjacencyMatrix): number[] {
   const n = matrix.order.length;
   const degrees = new Array<number>(n).fill(0);
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
-      if (i !== j && (matrix.cells[i][j] > 0 || matrix.cells[j][i] > 0)) degrees[i] += 1;
+      if (isLinked(matrix, i, j)) degrees[i] += 1;
     }
   }
   return degrees;
 }
 
-/** Cuthill–McKee: BFS from a min-degree seed per component, queueing neighbours by ascending degree. */
+/**
+ * Cuthill–McKee: BFS from a min-degree seed per component, queueing neighbours by ascending degree.
+ * Isolated (degree-0) nodes are NOT used as seeds and are appended at the END, so they don't float
+ * ahead of the diagonal blocks.
+ */
 function cuthillMckee(matrix: AdjacencyMatrix, degrees: number[]): number[] {
   const n = matrix.order.length;
   const adjacency = Array.from({ length: n }, (_, i) => {
     const neighbours: number[] = [];
-    for (let j = 0; j < n; j++) {
-      if (i !== j && (matrix.cells[i][j] > 0 || matrix.cells[j][i] > 0)) neighbours.push(j);
-    }
+    for (let j = 0; j < n; j++) if (isLinked(matrix, i, j)) neighbours.push(j);
     return neighbours;
   });
 
   const visited = new Array<boolean>(n).fill(false);
   const result: number[] = [];
-  const seeds = [...Array(n).keys()].sort((a, b) => degrees[a] - degrees[b]);
+  const seeds = [...Array(n).keys()].filter((i) => degrees[i] > 0).sort((a, b) => degrees[a] - degrees[b]);
 
   for (const seed of seeds) {
     if (visited[seed]) continue;
@@ -95,19 +102,19 @@ function cuthillMckee(matrix: AdjacencyMatrix, degrees: number[]): number[] {
     while (head < queue.length) {
       const u = queue[head++];
       result.push(u);
-      const next = adjacency[u]
-        .filter((v) => !visited[v])
-        .sort((a, b) => degrees[a] - degrees[b]);
+      const next = adjacency[u].filter((v) => !visited[v]).sort((a, b) => degrees[a] - degrees[b]);
       for (const v of next) {
         visited[v] = true;
         queue.push(v);
       }
     }
   }
+  // Append isolated / any unvisited nodes at the end, in original order.
+  for (let i = 0; i < n; i++) if (!visited[i]) result.push(i);
   return result;
 }
 
-function toNumber(value: unknown): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 1;
+/** A present finite number, else 0 — so a missing/non-numeric weight field is NOT faked as 1. */
+function toWeight(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }

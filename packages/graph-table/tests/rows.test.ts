@@ -44,4 +44,48 @@ describe('inferColumns', () => {
     const columns = inferColumns(toEdgeRows(graph));
     expect(columns.map((c) => c.id)).toContain('source');
   });
+
+  it('humanizes nodeId → Node ID and node_label → Node Label', () => {
+    const g: CanonicalGraph = {
+      directed: true,
+      multigraph: false,
+      nodes: [{ id: nodeId('a'), kind: 'entity', data: { nodeId: 1, node_label: 'x' } }],
+      edges: [],
+      graph: {},
+    };
+    const header = (id: string) => inferColumns(toNodeRows(g)).find((c) => c.id === id)?.header;
+    expect(header('nodeId')).toBe('Node ID');
+    expect(header('node_label')).toBe('Node Label');
+  });
+});
+
+describe('reserved-key collisions (canonical identity must win)', () => {
+  it('a node’s own id/kind win; a colliding data.id is namespaced as data.id', () => {
+    const g: CanonicalGraph = {
+      directed: true,
+      multigraph: false,
+      nodes: [{ id: nodeId('a'), kind: 'entity', data: { id: 'OVERWRITTEN', kind: 'BAD', label: 'x' } }],
+      edges: [],
+      graph: {},
+    };
+    const row = toNodeRows(g)[0];
+    expect(row.id).toBe('a'); // identity preserved
+    expect(row.kind).toBe('entity');
+    expect(row['data.id']).toBe('OVERWRITTEN');
+    expect(row.label).toBe('x');
+  });
+
+  it('an edge’s endpoints win over data.source/data.target', () => {
+    const g: CanonicalGraph = {
+      directed: true,
+      multigraph: false,
+      nodes: [{ id: nodeId('a'), kind: 'entity' }, { id: nodeId('b'), kind: 'entity' }],
+      edges: [{ id: edgeId('e'), source: nodeId('a'), target: nodeId('b'), data: { source: 'HACKED', w: 5 } }],
+      graph: {},
+    };
+    const row = toEdgeRows(g)[0];
+    expect(row.source).toBe('a');
+    expect(row['data.source']).toBe('HACKED');
+    expect(row.w).toBe(5);
+  });
 });

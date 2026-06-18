@@ -47,6 +47,17 @@ describe('toAdjacencyMatrix', () => {
     };
     expect(toAdjacencyMatrix(g, { weight: 'w' }).cells[0][1]).toBe(5);
   });
+
+  it('does not double-count an undirected self-loop', () => {
+    const g: CanonicalGraph = {
+      directed: false,
+      multigraph: true,
+      nodes: [{ id: nodeId('a'), kind: 'entity' }],
+      edges: [{ id: edgeId('loop'), source: nodeId('a'), target: nodeId('a') }],
+      graph: {},
+    };
+    expect(toAdjacencyMatrix(g).cells[0][0]).toBe(1); // one self-loop → diagonal 1, not 2
+  });
 });
 
 describe('seriate', () => {
@@ -69,5 +80,27 @@ describe('seriate', () => {
   it('degree method sorts hubs first', () => {
     const star = undirectedEdges([['hub', 'l1'], ['hub', 'l2'], ['hub', 'l3']]);
     expect(seriate(toAdjacencyMatrix(star), 'degree')[0]).toBe('hub');
+  });
+
+  it('appends isolated (degree-0) nodes to the END, not the front', () => {
+    const g = undirectedEdges([['a', 'b'], ['b', 'c'], ['c', 'a']]);
+    g.nodes.push({ id: nodeId('m'), kind: 'entity' }); // isolated
+    const order = seriate(toAdjacencyMatrix(g));
+    expect(order[order.length - 1]).toBe('m');
+  });
+
+  it('groups a single connected component (two cliques + bridge) into contiguous blocks', () => {
+    const g = undirectedEdges([
+      ['a', 'b'], ['b', 'c'], ['c', 'a'], // clique 1
+      ['x', 'y'], ['y', 'z'], ['z', 'x'], // clique 2
+      ['c', 'x'], // bridge → one component
+    ]);
+    const order = seriate(toAdjacencyMatrix(g));
+    const span = (members: string[]) => {
+      const p = members.map((id) => order.indexOf(id)).sort((a, b) => a - b);
+      return p[p.length - 1] - p[0];
+    };
+    expect(span(['a', 'b', 'c'])).toBe(2); // each clique stays a contiguous diagonal block
+    expect(span(['x', 'y', 'z'])).toBe(2);
   });
 });

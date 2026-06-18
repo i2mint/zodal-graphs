@@ -10,12 +10,12 @@
 import type { RendererCapabilities } from '@zodal/graph-core';
 import { makeTester, PRIORITY, viewRequested, type GraphRendererEntry } from '@zodal/graph-ui';
 
-/** The table lens: the universal, virtualizable grid surface (no graph drawing). */
+/** The table lens: the universal grid surface (no graph drawing). Capabilities report what SHIPS now. */
 export const tableCapabilities: RendererCapabilities = {
   renderer: 'table',
   typedPorts: false,
   validatesConnections: false,
-  editing: true, // cell / property editing
+  editing: false, // read-only row shaping this checkpoint; cell write-back is deferred
   compoundNodes: false,
   directed: true,
   undirected: true,
@@ -25,7 +25,9 @@ export const tableCapabilities: RendererCapabilities = {
   intervals: false,
   traversalOverlays: [],
   views: ['table'],
-  maxComfortableNodes: 1_000_000, // virtualized
+  // Un-virtualized DOM rows: comfortable into the low tens of thousands — a benchmark default to
+  // measure, not a hard limit. Raise once @tanstack/react-virtual is wired in (deferred).
+  maxComfortableNodes: 10_000,
   layoutEngines: [],
   rendering: 'svg',
   side: 'client',
@@ -46,7 +48,9 @@ export const matrixCapabilities: RendererCapabilities = {
   intervals: false,
   traversalOverlays: [],
   views: ['matrix'],
-  maxComfortableNodes: 5_000, // quadratic screen cost
+  // Quadratic cell cost (n² cells): ~2000 nodes ≈ 4M cells, near the practical un-aggregated ceiling.
+  // A benchmark default; an aggregating/virtualized matrix renderer (deferred) would raise it.
+  maxComfortableNodes: 2_000,
   layoutEngines: [],
   rendering: 'canvas',
   side: 'client',

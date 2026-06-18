@@ -23,7 +23,8 @@ export function initViewState(capabilities: GraphCapabilities): ViewState {
   return { activeView: capabilities.views[0] ?? 'table' };
 }
 
-/** Pure setter: switch the active view, preserving every other field of `state`. */
+/** Pure, UNCHECKED setter: switch the active view, preserving every other field of `state`. Use
+ *  {@link switchViewChecked} when you want to refuse views the graph doesn't declare. */
 export function switchView<S extends ViewState>(state: S, view: GraphView): S {
   return { ...state, activeView: view };
 }
@@ -31,4 +32,13 @@ export function switchView<S extends ViewState>(state: S, view: GraphView): S {
 /** Is `view` available for this graph? */
 export function canSwitchTo(capabilities: GraphCapabilities, view: GraphView): boolean {
   return capabilities.views.includes(view);
+}
+
+/** Checked setter: switch only to a view the graph declares; otherwise return `state` unchanged. */
+export function switchViewChecked<S extends ViewState>(
+  capabilities: GraphCapabilities,
+  state: S,
+  view: GraphView,
+): S {
+  return canSwitchTo(capabilities, view) ? switchView(state, view) : state;
 }

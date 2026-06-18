@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { resolveGraphCapabilities } from '@zodal/graph-core';
-import { availableViews, initViewState, switchView, canSwitchTo } from '../src/index.js';
+import { availableViews, initViewState, switchView, switchViewChecked, canSwitchTo } from '../src/index.js';
 
 const caps = resolveGraphCapabilities({ views: ['node-link', 'table', 'matrix'] });
 
@@ -28,5 +28,11 @@ describe('view switching', () => {
   it('canSwitchTo respects the declared views', () => {
     expect(canSwitchTo(caps, 'matrix')).toBe(true);
     expect(canSwitchTo(caps, 'timeline')).toBe(false);
+  });
+
+  it('switchViewChecked refuses a view the graph does not declare', () => {
+    const state = { activeView: 'table' as const };
+    expect(switchViewChecked(caps, state, 'matrix').activeView).toBe('matrix'); // available → switches
+    expect(switchViewChecked(caps, state, 'timeline')).toBe(state); // unavailable → unchanged (same ref)
   });
 });
