@@ -3,7 +3,7 @@
  * multi-output distribution, var pass-through, and cycle rejection.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type { CanonicalGraph, FuncRef, GraphNode, GraphPort } from '@zodal/graph-core';
 import { nodeId, edgeId } from '@zodal/graph-core';
 import { run, runSteps, recompute, buildExecutionPlan, type ValueEvent } from '../src/index.js';
@@ -153,12 +153,70 @@ describe('recompute', () => {
     expect(first.scope['d'].out).toBe(11);
     expect(calls.const99).toBe(1);
 
-    const again = await recompute(graph, { resolver, inputs: { in: { v: 20 } } }, first.scope, ['in']);
+    const again = await recompute(graph, { resolver, inputs: { in: { v: 20 } } }, first, ['in']);
     expect(again.scope['in'].out).toBe(20);
     expect(again.scope['d'].out).toBe(21); // downstream recomputed
     expect(again.scope['side'].out).toBe(99); // preserved from previous scope
     expect(again.recomputed).toEqual(['in', 'd']); // side NOT recomputed
     expect(calls.const99).toBe(1); // const99 was not called again
+  });
+
+  it('preserves a re-executed node’s OWN unchanged seeds (no NaN regression)', async () => {
+    const graph = graphOf(
+      [
+        func('in', 'identity', [['v', 'in'], ['out', 'out']]),
+        func('d', 'add', [['x', 'in'], ['k', 'in'], ['out', 'out']]), // x bound, k seeded
+      ],
+      [edge('e1', 'in', 'out', 'd', 'x')],
+    );
+    const { resolver } = resolverFrom({ identity: ({ v }) => v, add: ({ x, k }) => (x as number) + (k as number) });
+    const first = await run(graph, { resolver, inputs: { in: { v: 10 }, d: { k: 100 } } });
+    expect(first.scope['d'].out).toBe(110);
+
+    // recompute passes ONLY the changed input; d's seed k must survive (was producing NaN before the fix).
+    const again = await recompute(graph, { resolver, inputs: { in: { v: 20 } } }, first, ['in']);
+    expect(again.scope['d'].out).toBe(120);
+  });
+});
+
+describe('plan/runtime validation (no silent corruption)', () => {
+  it('rejects fan-in: two edges into the same in-port', () => {
+    const graph = graphOf(
+      [func('a', 'f', [['out', 'out']]), func('b', 'f', [['out', 'out']]), func('m', 'f', [['x', 'in'], ['out', 'out']])],
+      [edge('e1', 'a', 'out', 'm', 'x'), edge('e2', 'b', 'out', 'm', 'x')],
+    );
+    expect(() => buildExecutionPlan(graph)).toThrow(/fan-in/);
+  });
+
+  it('rejects a var node with more than one incoming edge', () => {
+    const graph: CanonicalGraph = graphOf(
+      [func('a', 'f', [['out', 'out']]), func('b', 'f', [['out', 'out']]), { id: nodeId('v'), kind: 'var', ports: [{ port: 'out', direction: 'out' }] }],
+      [edge('e1', 'a', 'out', 'v', 'in'), edge('e2', 'b', 'out', 'v', 'in')],
+    );
+    expect(() => buildExecutionPlan(graph)).toThrow(/more than one incoming edge/);
+  });
+
+  it('rejects an edge that omits sourcePort from a multi-out-port source', () => {
+    const graph = graphOf(
+      [func('s', 'split', [['lo', 'out'], ['hi', 'out']]), func('t', 'f', [['x', 'in'], ['out', 'out']])],
+      [{ id: edgeId('e1'), source: nodeId('s'), target: nodeId('t'), targetPort: 'x' }], // no sourcePort
+    );
+    expect(() => buildExecutionPlan(graph)).toThrow(/ambiguous/);
+  });
+
+  it('throws when a multi-out-port callable returns a non-object', async () => {
+    const graph = graphOf([func('s', 'bad', [['lo', 'out'], ['hi', 'out']])], []);
+    const { resolver } = resolverFrom({ bad: () => 42 });
+    await expect(run(graph, { resolver })).rejects.toThrow(/multi-output callables must return an object/);
+  });
+
+  it('throws when a required input is unbound', async () => {
+    const graph: CanonicalGraph = graphOf(
+      [{ id: nodeId('f'), kind: 'func', funcRef: { ref: 'needs', lang: 'ts' }, ports: [{ port: 'x', direction: 'in', required: true }, { port: 'out', direction: 'out' }] }],
+      [],
+    );
+    const { resolver } = resolverFrom({ needs: ({ x }) => x });
+    await expect(run(graph, { resolver })).rejects.toThrow(/required input "x"/);
   });
 });
 

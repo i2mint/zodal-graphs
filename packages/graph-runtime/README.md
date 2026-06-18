@@ -4,9 +4,10 @@
 > incrementally recompute a computation graph.
 
 Executes a func graph in topological order over a value scope, driven by a `FuncRefResolver` that
-maps each node's `funcRef` to a runnable callable. Pure-TS refs resolve to JS functions directly;
-Python-backed refs resolve via a consumer-supplied resolver (Pyodide/WASM or a backend). This
-realizes the project's "full in-browser execution is a first-class goal" decision.
+maps each node's `funcRef` to a runnable callable. The runtime does **not** branch on `funcRef.lang`
+— the resolver is the single dispatch point (pure-TS returns a JS function; Python-backed bridges to
+Pyodide/WASM or a backend). This realizes the project's "full in-browser execution is a first-class
+goal" decision.
 
 ## Install
 
@@ -38,15 +39,23 @@ const next = await recompute(graph, { resolver, inputs: { in: { v: 20 } } }, sco
 ```
 
 Seed input ports with no incoming edge via `inputs: { nodeId: { inPort: value } }`. `var` nodes pass
-their single input through; `entity` / funcRef-less nodes are skipped. A cyclic graph throws (no
-topological order).
+their single input through (seed key = its in-port name, or `value` if it has none). `entity` /
+funcRef-less nodes are skipped.
+
+**It fails loudly, never silently corrupts:** a cyclic graph, fan-in (two edges into one in-port), a
+var node with multiple incoming edges, an edge that omits `sourcePort` from a multi-out-port source,
+a multi-out callable returning a non-object, and an unbound `required` input all throw with a
+descriptive error.
 
 ## Scope (this checkpoint)
 
-**Built + tested:** `buildExecutionPlan` (topo + input bindings), `run`, `runSteps` (step /
-watch-values), `recompute` (incremental downstream re-execution), value events, multi-output
-distribution, var pass-through, cycle rejection. **Deferred:** provenance capture, cost
-estimation/gating, human-in-the-loop approval, async fan-out, and the concrete Python resolver
+**Built + tested:** `buildExecutionPlan` (topo + bindings + eager ambiguity rejection), `run`,
+`runSteps` (step / watch-values), `recompute` (incremental downstream re-execution that preserves a
+re-run node's own seeds), value events, multi-output distribution, var pass-through, and the
+fail-loud validations above. **Known limitation:** the object calling convention assumes
+keyword-compatible parameters — Python positional-only / `*args` / `**kwargs` kinds (`PortKind`) are
+not yet expressible. **Deferred:** provenance capture, cost estimation/gating, human-in-the-loop
+approval, positional/var-positional argument binding, and the concrete Python resolver
 implementations (Pyodide / backend-delegating).
 
 ## Status

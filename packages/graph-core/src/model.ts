@@ -93,12 +93,23 @@ export interface FuncRef {
   hash?: string;
 }
 
-/** An opaque, invocable function. Intentionally `unknown[]` (not `never[]`) so a resolved
- *  callable can actually be CALLED by the runtime; a stricter signature belongs on the concrete
- *  resolver, not on this contract. */
+/**
+ * An opaque, invocable function returned by a {@link FuncRefResolver}.
+ *
+ * **Calling convention used by `@zodal/graph-runtime`:** the engine invokes the callable with
+ * exactly ONE positional argument — an object of the node's inputs keyed by parameter name
+ * (`{ [port.param ?? port.port]: value }`) — and expects it to return the value (one out-port) or an
+ * object keyed by out-port name (several out-ports). So a resolved callable looks like
+ * `({ x, y }) => x + y`, NOT `(x, y) => x + y`.
+ */
 export type Callable = (...args: unknown[]) => unknown;
 
-/** Maps a `FuncRef` to a runnable callable. Implemented by `@zodal/graph-runtime` consumers. */
+/**
+ * Maps a `FuncRef` to a runnable {@link Callable}. The resolver is the SINGLE dispatch point: the
+ * runtime does not branch on `funcRef.lang`, so the resolver maps any language (`ts`, `py`, …) to a
+ * callable — pure-TS directly, Python-backed via Pyodide/WASM or a backend. Implemented by
+ * `@zodal/graph-runtime` consumers.
+ */
 export type FuncRefResolver = (funcRef: FuncRef) => Callable | Promise<Callable>;
 
 export interface GraphNode<TData = unknown> {
