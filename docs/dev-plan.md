@@ -50,7 +50,7 @@ Names are provisional until the first package lands.
 | Package | Role | Depends on | Horizon |
 |---|---|---|---|
 | **`@zodal/graph-core`** | canonical model, `ports[]`, capabilities vocab, `GraphOverlays/Styling/Selection/Layout` types, `defineGraph`, serializer (`nodes_and_links`), **pure** adapters (graphology / react-flow-shape / ELK), `portTypeCompatible`. **No renderer deps.** | `zod` (peer), `@zodal/core` (peer) | **1 (now)** |
-| **`@zodal/graph-ui`** | renders + mappings registries, `RendererCapabilities`, graph-aware testers + PRIORITY bands, capability-ranked **selection rule**, headless generators | `@zodal/graph-core`, `@zodal/ui` (peer) | **2** |
+| **`@zodal/graph-ui`** | renders + mappings registries, `RendererCapabilities`, graph-aware testers + PRIORITY bands, capability-ranked **selection rule** (built); headless generators (later, with the lens work) | `@zodal/graph-core` (`@zodal/ui` peer added when generators land) | **2** |
 | **`@zodal/graph-compute`** | traversal + provenance overlay engine (graphology-*), ~50-line Tarjan, reachability primitive, `GraphOverlays` emit, server-boundary contract | `@zodal/graph-core`, `graphology` | **2** |
 | **`@zodal/graph-react-flow`** | React Flow typed-port **editor** renderer; `makeIsValidConnection` wiring; collapse↔expand | `@zodal/graph-core`, `@zodal/graph-ui`, `@xyflow/react`+`react` (peer) | **2–3** |
 | **`@zodal/graph-runtime`** | in-browser dataflow **execution engine** — topo-order run, scope, step, incremental downstream recompute, value-watch events; consumes a `FuncRefResolver` (pure-TS direct; Python via Pyodide/WASM or backend) | `@zodal/graph-core` | **3–4** |

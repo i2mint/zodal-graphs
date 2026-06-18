@@ -91,21 +91,35 @@ export type RenderSide = 'client' | 'server' | 'hybrid';
 
 /**
  * A renderer's honest self-description. The registry ranks these against a graph's
- * {@link GraphCapabilities} to pick (and degrade) a renderer.
+ * {@link GraphCapabilities} to pick (and degrade) a renderer — so every graph capability that a
+ * renderer might fail to honor has a mirror field here, letting the degrade report be complete.
  */
 export interface RendererCapabilities {
   renderer: string;
   typedPorts: boolean;
+  /** Can enforce connect-time type validation (mirrors `GraphCapabilities.validatesConnections`). */
+  validatesConnections: boolean;
   editing: boolean;
   compoundNodes: boolean;
   directed: boolean;
   undirected: boolean;
   multigraph: boolean;
   provenanceOverlay: boolean;
+  /** Can show live dataflow values on the canvas (mirrors `watchesValues`). */
+  watchesValues: boolean;
+  /** Can render interval/timeline tiers (mirrors `hasIntervals` / the `timeline` view). */
+  intervals: boolean;
+  /** Which traversal/overlay kinds this renderer can draw (subset of `TraversalKind`). */
+  traversalOverlays: TraversalKind[];
+  /** Which views this renderer can present (subset of `GraphView`). */
+  views: GraphView[];
   /** Node count above which this renderer stops being comfortable (a benchmark default). */
   maxComfortableNodes: number;
+  /** Descriptive only at this checkpoint — not yet used in selection/degrade. */
   layoutEngines: string[];
+  /** Descriptive only at this checkpoint. */
   rendering: RenderTech;
+  /** Descriptive only at this checkpoint. */
   side: RenderSide;
 }
 
