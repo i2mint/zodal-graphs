@@ -1,0 +1,52 @@
+{
+  "name": "@zodal/graph-core",
+  "version": "0.0.1",
+  "description": "Canonical graph data model, capabilities vocabulary, serializer, pure adapters, and defineGraph for zodal-graphs",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./graphology": {
+      "types": "./dist/graphology.d.ts",
+      "import": "./dist/graphology.js",
+      "require": "./dist/graphology.cjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "pnpm build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@zodal/core": "^0.1.0",
+    "graphology": "^0.25.0 || ^0.26.0",
+    "zod": ">=4.1.13"
+  },
+  "peerDependenciesMeta": {
+    "graphology": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@zodal/core": "^0.1.2",
+    "graphology": "^0.26.0",
+    "graphology-types": "^0.24.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "zod": "^4.4.0"
+  }
+}

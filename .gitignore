@@ -1,6 +1,9 @@
 .DS_Store
 *.log
 node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
 
 # --- Claude / AI tooling ---
 # .claude/ is tracked as shared agent resources (CLAUDE.md, the skills bridge).
