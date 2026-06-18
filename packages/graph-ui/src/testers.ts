@@ -13,7 +13,7 @@
 
 import type { GraphCapabilities, GraphView } from '@zodal/graph-core';
 import type { GraphRenderContext } from './context.js';
-import { PRIORITY, INELIGIBLE } from './priority.js';
+import { PRIORITY, INELIGIBLE, type Priority } from './priority.js';
 
 export type GraphRendererTester = (graph: GraphCapabilities, context: GraphRenderContext) => number;
 
@@ -62,10 +62,10 @@ export const not = (p: GraphPredicate): GraphPredicate => (g, ctx) => !p(g, ctx)
 export interface TesterSpec {
   /** Hard gate: if present and false, the renderer opts out entirely (`INELIGIBLE`). */
   eligible?: GraphPredicate;
-  /** Score when eligible, before bonuses. Defaults to `PRIORITY.DEFAULT`. */
-  base?: number;
-  /** Additive band for each predicate that holds — specialization raises the score. */
-  bonuses?: Array<[GraphPredicate, number]>;
+  /** Score when eligible, before bonuses. A named {@link Priority} band; defaults to `DEFAULT`. */
+  base?: Priority;
+  /** Additive {@link Priority} band for each predicate that holds — specialization raises the score. */
+  bonuses?: Array<[GraphPredicate, Priority]>;
 }
 
 /** Build a {@link GraphRendererTester} from an eligibility gate + base band + additive bonuses. */

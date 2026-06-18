@@ -17,6 +17,7 @@ import type { GraphCapabilities, RendererCapabilities } from '@zodal/graph-core'
 import type { GraphRenderContext } from './context.js';
 import type { GraphRendererTester } from './testers.js';
 import { computeGaps, type CapabilityGap } from './gaps.js';
+import { INELIGIBLE } from './priority.js';
 
 /** One registered renderer: its tester (the schema↔render mapping), the payload, and its honest capabilities. */
 export interface GraphRendererEntry<T> {
@@ -56,30 +57,44 @@ export interface GraphRendererRegistry<T> {
 
 const EMPTY_CONTEXT: GraphRenderContext = {};
 
-/** Create a fresh, user-owned renderer registry (not a global singleton). */
+interface Scored<T> {
+  entry: GraphRendererEntry<T>;
+  score: number;
+  degraded: CapabilityGap[];
+}
+
+/**
+ * Create a fresh, user-owned renderer registry (not a global singleton).
+ *
+ * Testers MUST be pure: `resolve`, `select`, and `explain` all derive from one `rank()` pass over
+ * the same `(graph, context)` inputs, so their winners agree by construction.
+ */
 export function createGraphRendererRegistry<T>(): GraphRendererRegistry<T> {
   const entries: GraphRendererEntry<T>[] = [];
 
-  function best(
-    graph: GraphCapabilities,
-    context: GraphRenderContext,
-  ): { entry: GraphRendererEntry<T>; score: number } | null {
-    let bestEntry: GraphRendererEntry<T> | null = null;
-    let bestScore = -1;
-    for (const entry of entries) {
-      const score = entry.tester(graph, context);
-      // Strict `>` → on a tie the FIRST-registered entry wins (documented tiebreaker).
-      if (score > bestScore) {
-        bestScore = score;
-        bestEntry = entry;
-      }
-    }
-    return bestEntry && bestScore > -1 ? { entry: bestEntry, score: bestScore } : null;
+  /** Score & gap every entry once, sorted by score desc. `Array.sort` is stable → ties keep
+   *  registration order (the documented tiebreaker). Ineligible entries carry an empty degrade. */
+  function rank(graph: GraphCapabilities, context: GraphRenderContext): Scored<T>[] {
+    return entries
+      .map((entry) => {
+        const score = entry.tester(graph, context);
+        const degraded = score > INELIGIBLE ? computeGaps(graph, entry.capabilities, context) : [];
+        return { entry, score, degraded };
+      })
+      .sort((a, b) => b.score - a.score);
+  }
+
+  /** The top-ranked entry, or null if none is eligible (score must be strictly above INELIGIBLE). */
+  function winner(graph: GraphCapabilities, context: GraphRenderContext): Scored<T> | null {
+    const top = rank(graph, context)[0];
+    return top && top.score > INELIGIBLE ? top : null;
   }
 
   return {
     get entries() {
-      return entries;
+      // Defensive copy — callers can inspect but not mutate the registry's internal state
+      // (preserves the open-closed "register only appends" invariant).
+      return [...entries];
     },
 
     register(entry) {
@@ -87,30 +102,27 @@ export function createGraphRendererRegistry<T>(): GraphRendererRegistry<T> {
     },
 
     resolve(graph, context = EMPTY_CONTEXT) {
-      return best(graph, context)?.entry.renderer ?? null;
+      return winner(graph, context)?.entry.renderer ?? null;
     },
 
     select(graph, context = EMPTY_CONTEXT) {
-      const found = best(graph, context);
-      if (!found) return null;
-      const { entry, score } = found;
+      const top = winner(graph, context);
+      if (!top) return null;
       return {
-        renderer: entry.renderer,
-        capabilities: entry.capabilities,
-        name: entry.name,
-        score,
-        degraded: computeGaps(graph, entry.capabilities, context),
+        renderer: top.entry.renderer,
+        capabilities: top.entry.capabilities,
+        name: top.entry.name,
+        score: top.score,
+        degraded: top.degraded,
       };
     },
 
     explain(graph, context = EMPTY_CONTEXT) {
-      return entries
-        .map((entry) => ({
-          name: entry.name,
-          score: entry.tester(graph, context),
-          degraded: computeGaps(graph, entry.capabilities, context),
-        }))
-        .sort((a, b) => b.score - a.score);
+      return rank(graph, context).map(({ entry, score, degraded }) => ({
+        name: entry.name,
+        score,
+        degraded,
+      }));
     },
   };
 }

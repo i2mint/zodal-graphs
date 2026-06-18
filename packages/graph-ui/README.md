@@ -12,8 +12,11 @@ register here.
 ## Install
 
 ```bash
-pnpm add @zodal/graph-ui @zodal/graph-core
+pnpm add @zodal/graph-ui
 ```
+
+`@zodal/graph-core` comes transitively (it's a regular dependency). If you also call
+`defineGraph` from `@zodal/graph-core` directly, install its peers too: `@zodal/core` and `zod`.
 
 ## The idea
 

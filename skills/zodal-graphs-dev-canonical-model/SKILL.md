@@ -50,9 +50,12 @@ Serialized wire shape = **`nodes_and_links` superset** (linked-compatible):
   traversal: TraversalKind[], views: GraphView[], scaleClass: 'small'|'medium'|'large'|'huge',
   hasIntervals`. `DEFAULT_GRAPH_CAPABILITIES` = read-only / no-ports / not-executable /
   `views:['node-link','table']` / `scaleClass:'small'`.
-- **`RendererCapabilities`** (renderer-side honest descriptor): `typedPorts, editing,
-  compoundNodes, directed, undirected, multigraph, provenanceOverlay, maxComfortableNodes,
-  layoutEngines, rendering:'svg'|'canvas'|'webgl', side:'client'|'server'|'hybrid'`.
+- **`RendererCapabilities`** (renderer-side honest descriptor): `typedPorts,
+  validatesConnections, editing, compoundNodes, directed, undirected, multigraph,
+  provenanceOverlay, watchesValues, intervals, traversalOverlays: TraversalKind[],
+  views: GraphView[], maxComfortableNodes, layoutEngines, rendering, side`. Every graph
+  capability a renderer might fail to honor has a mirror field here so `@zodal/graph-ui`'s
+  degrade report can be complete.
 - `GraphView = 'node-link'|'table'|'matrix'|'timeline'|'form'`. Keep this enum SSOT — it is
   reused as the `activeView` state field in the table/matrix/form lens (P5).
 

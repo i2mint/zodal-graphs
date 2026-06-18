@@ -1,8 +1,13 @@
 /**
  * Priority bands for renderer testers — named tiers instead of magic numbers (mirrors zodal's
- * `@zodal/ui`). A tester returns a band (optionally summed with bonuses); the registry picks the
- * highest-scoring renderer. Specialization outranks generics because a more specific tester
- * returns a higher band.
+ * `@zodal/ui`).
+ *
+ * Scores are **additive weights**, not exclusive tiers: a tester's `base` band plus its matching
+ * bonus bands sum, so a specialized renderer (e.g. typed-ports + editing) intentionally outscores
+ * a generic one — the same compounding `and()` does in zodal. The one hard guarantee is that
+ * **`OVERRIDE` always wins unless ineligible**: it is spaced far above any realistic accumulation
+ * of `base + bonuses`, so no stack of `DEFAULT`/`LIBRARY`/`APP` weights can reach it. Keep a single
+ * tester's bonus sum well below the gap to the next band you don't want it to cross.
  */
 
 export const PRIORITY = {
@@ -14,11 +19,11 @@ export const PRIORITY = {
   LIBRARY: 50,
   /** An application-level preference (e.g. the user explicitly asked for this view). */
   APP: 100,
-  /** A hard override that should win unless ineligible. */
-  OVERRIDE: 200,
+  /** A hard override — spaced far above any base+bonus accumulation so it always wins unless ineligible. */
+  OVERRIDE: 100_000,
 } as const;
 
 export type Priority = (typeof PRIORITY)[keyof typeof PRIORITY];
 
-/** A tester returns this to opt OUT entirely (the renderer cannot render the graph at all). */
+/** A tester returns this (or any value ≤ it) to opt OUT entirely — the renderer cannot render the graph. */
 export const INELIGIBLE = -1;
