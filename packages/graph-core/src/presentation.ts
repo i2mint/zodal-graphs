@@ -62,7 +62,9 @@ export type LayoutAlgorithm =
   | 'elk'
   | 'force'
   | 'circular'
-  | 'hierarchical';
+  | 'hierarchical'
+  | 'radial'
+  | 'swimlane';
 
 /** A layout *hint*, not state — the renderer or a layout engine computes actual positions. */
 export interface GraphLayout {
