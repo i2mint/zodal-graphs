@@ -11,7 +11,7 @@
  */
 
 import type { CanonicalGraph, GraphCapabilities, OverlayLayer } from '@zodal/graph-core';
-import { buildIndex, topologicalOrder, type GraphIndex, type Direction } from './adjacency.js';
+import { buildIndex, topologicalOrder, type GraphIndex, type Direction, type Walk } from './adjacency.js';
 import {
   pathLayer,
   neighborhoodLayer,
@@ -25,10 +25,20 @@ import {
   type OverlayRequest,
   type OverlayResult,
 } from './overlays.js';
+import {
+  degreeCentrality,
+  pagerank,
+  betweenness,
+  community as communityOf,
+  criticalPath as criticalPathOf,
+  degreeOfInterest,
+  type CentralityKind,
+} from './metrics.js';
 
 export * from './adjacency.js';
 export * from './overlays.js';
 export * from './filter.js';
+export * from './metrics.js';
 
 /** A reusable engine bound to one graph (the index is built once). */
 export interface TraversalEngine {
@@ -43,6 +53,17 @@ export interface TraversalEngine {
   provenance(node: string): OverlayLayer;
   cycles(): OverlayLayer | null;
   components(): OverlayLayer;
+  /** Centrality scores per node (degree / pagerank / betweenness) — for importance-driven styling. */
+  centrality(kind?: CentralityKind): Map<string, number>;
+  /** Community index per node (label propagation). */
+  community(): Map<string, number>;
+  /** Longest weighted DAG path (null if cyclic). */
+  criticalPath(weightOf?: (edgeId: string) => number): Walk | null;
+  /** Degree-of-interest score per node given a focus set (a-priori importance − distance). */
+  doi(
+    focus: string[],
+    opts?: { apriori?: Map<string, number>; centralityWeight?: number; distanceDecay?: number },
+  ): Map<string, number>;
   topologicalOrder(): string[] | null;
   overlays(request: OverlayRequest, capabilities?: GraphCapabilities): OverlayResult;
 }
@@ -60,6 +81,11 @@ export function createTraversalEngine(graph: CanonicalGraph): TraversalEngine {
     provenance: (node) => provenanceLayer(index, node),
     cycles: () => cyclesLayer(index),
     components: () => componentsLayer(index),
+    centrality: (kind = 'degree') =>
+      kind === 'pagerank' ? pagerank(index) : kind === 'betweenness' ? betweenness(index) : degreeCentrality(index),
+    community: () => communityOf(index),
+    criticalPath: (weightOf) => criticalPathOf(index, weightOf),
+    doi: (focus, opts) => degreeOfInterest(index, focus, opts),
     topologicalOrder: () => topologicalOrder(index),
     overlays: (request, capabilities) => computeOverlaysFromIndex(index, request, capabilities),
   };
