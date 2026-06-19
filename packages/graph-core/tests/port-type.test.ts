@@ -125,3 +125,48 @@ describe('portTypeRefFromZod (reuses @zodal/core introspection)', () => {
     expect(portTypeCompatible(ref, portTypeRefFromZod(z.number()))).toBe(false);
   });
 });
+
+describe('portTypeCompatible — structural widening (covariant subtyping)', () => {
+  const compat = (out: z.ZodType, into: z.ZodType): boolean =>
+    portTypeCompatible(portTypeRefFromZod(out), portTypeRefFromZod(into));
+
+  it('numeric refinement covariance (constrained ⊆ looser)', () => {
+    expect(compat(z.number().min(0), z.number())).toBe(true); // constrained → unconstrained
+    expect(compat(z.number(), z.number().min(0))).toBe(false); // unconstrained → constrained
+    expect(compat(z.number().min(0).max(10), z.number().min(0))).toBe(true); // tighter ⊆ looser
+    expect(compat(z.number().min(0), z.number().min(5))).toBe(false); // [0,∞) ⊄ [5,∞)
+  });
+
+  it('array element covariance', () => {
+    expect(compat(z.array(z.number()), z.array(z.number()))).toBe(true);
+    expect(compat(z.array(z.number()), z.array(z.string()))).toBe(false);
+    expect(compat(z.array(z.number()), z.array(z.unknown()))).toBe(true); // into element is a wildcard
+  });
+
+  it('object width + depth subtyping', () => {
+    expect(compat(z.object({ a: z.number(), b: z.string() }), z.object({ a: z.number() }))).toBe(true); // extra field ok
+    expect(compat(z.object({ a: z.number() }), z.object({ a: z.number(), b: z.string() }))).toBe(false); // missing required field
+    expect(compat(z.object({ a: z.number() }), z.object({ a: z.number(), b: z.string().optional() }))).toBe(true); // optional target field
+    expect(compat(z.object({ a: z.string() }), z.object({ a: z.number() }))).toBe(false); // field type mismatch
+    expect(compat(z.object({ n: z.number().min(0) }), z.object({ n: z.number() }))).toBe(true); // recursive covariance
+    expect(compat(z.object({ n: z.number() }), z.object({ n: z.number().min(0) }))).toBe(false);
+  });
+
+  it('enum / literal value-set subset', () => {
+    expect(compat(z.enum(['a', 'b']), z.enum(['a', 'b', 'c']))).toBe(true); // subset
+    expect(compat(z.enum(['a', 'b', 'c']), z.enum(['a', 'b']))).toBe(false); // superset
+    expect(compat(z.literal('a'), z.enum(['a', 'b']))).toBe(true); // literal ∈ enum
+    expect(compat(z.literal('z'), z.enum(['a', 'b']))).toBe(false);
+  });
+
+  it('enum / literal of strings flows into a plain string', () => {
+    expect(compat(z.enum(['a', 'b']), z.string())).toBe(true);
+    expect(compat(z.literal('x'), z.string())).toBe(true);
+  });
+
+  it('tuple elementwise covariance (same arity)', () => {
+    expect(compat(z.tuple([z.number(), z.string()]), z.tuple([z.number(), z.string()]))).toBe(true);
+    expect(compat(z.tuple([z.number()]), z.tuple([z.number(), z.string()]))).toBe(false); // arity mismatch
+    expect(compat(z.tuple([z.number().min(0), z.string()]), z.tuple([z.number(), z.string()]))).toBe(true);
+  });
+});

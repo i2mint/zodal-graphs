@@ -89,11 +89,15 @@ before adding more adapters.** This benchmark is the acceptance test for the fir
 
 ## The genuinely-new module this regime owns
 
-`portTypeCompatible(out: PortTypeRef, into: PortTypeRef): boolean` — a Zod-v4 subtyping
-relation with **no existing precedent** (no format/library defines connect-time type
-validity). It feeds React Flow's `isValidConnection`. **Start conservative** (exact
-base-type match + wildcard); widen toward covariance/refinements/unions only when a real
-case demands it. See `zodal-graphs-dev-registries` for how it plugs into the editor.
+`portTypeCompatible(out: PortTypeRef, into: PortTypeRef): boolean` — a Zod-v4 **covariant
+subtyping** relation with **no existing precedent** (no format/library defines connect-time
+type validity). True iff out's value-set ⊆ into's. It feeds React Flow's `isValidConnection`.
+Beyond wildcard/optional/nullable/union it does **structural subtyping**: numeric-refinement
+range containment, object width+depth subtyping, array element covariance, tuple elementwise,
+and enum/literal value-sets (incl. enum → its primitive base). `PortTypeRef` carries the
+captured structure (`numeric`/`shape`/`element`/`tuple`/`values`). Still deferred: string-length
+refinements + inclusivity nuance (treated as unconstrained). See `zodal-graphs-dev-registries`
+for editor wiring.
 
 ## Adapter invariants (learned the hard way — hold these for every new adapter)
 
