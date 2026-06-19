@@ -12,3 +12,8 @@ dist/
 .claude/.system/
 .claude/skills/.system/
 .claude/handoffs/
+
+# Agent scratch probe files (must never be committed)
+probe*.cjs
+probe*.mjs
+_probe*
