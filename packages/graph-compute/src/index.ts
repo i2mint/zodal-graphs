@@ -40,6 +40,7 @@ export * from './overlays.js';
 export * from './filter.js';
 export * from './metrics.js';
 export * from './aggregate.js';
+export * from './recipes.js';
 
 /** A reusable engine bound to one graph (the index is built once). */
 export interface TraversalEngine {
