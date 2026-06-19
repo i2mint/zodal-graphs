@@ -10,4 +10,5 @@
  */
 
 export * from './headless.js';
+export * from './node-style.js';
 export * from './components.js';

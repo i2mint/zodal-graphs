@@ -16,6 +16,7 @@ import { useEffect, useRef, type ReactElement } from 'react';
 import type { CanonicalGraph, GraphOverlays } from '@zodal/graph-core';
 import { toGraphology } from '@zodal/graph-core/graphology';
 import { edgeOverlayStyle, nodeOverlayStyle, type OverlayStyleOptions } from './overlay-style.js';
+import { resolveNodeRenderStyle } from './node-style.js';
 
 export interface SigmaViewProps {
   graph: CanonicalGraph;
@@ -42,11 +43,14 @@ export function SigmaView({ graph, overlays, styleOptions }: SigmaViewProps): Re
     g.forEachNode((node, attrs: Record<string, unknown>) => {
       const position = attrs.position as { x: number; y: number } | undefined;
       const angle = (2 * Math.PI * i) / total;
+      // size/label/color resolve from the top-level attr or attrs.data (data-driven styling).
+      const style = resolveNodeRenderStyle(attrs, node);
       g.mergeNodeAttributes(node, {
         x: position?.x ?? Math.cos(angle),
         y: position?.y ?? Math.sin(angle),
-        size: (attrs.size as number | undefined) ?? 6,
-        label: (attrs.label as string | undefined) ?? node,
+        size: style.size,
+        label: style.label,
+        ...(style.color ? { color: style.color } : {}),
       });
       i += 1;
     });
