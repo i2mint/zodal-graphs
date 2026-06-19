@@ -19,9 +19,31 @@ import type {
   TraversalKind,
 } from '@zodal/graph-core';
 import type { GraphIndex } from './adjacency.js';
-import { reach, shortestPath, findCycle, connectedComponents } from './adjacency.js';
+import { reach, shortestPath, findCycle, connectedComponents, neighborhood, type Direction } from './adjacency.js';
 
 type RoleMap = Record<string, HighlightRole>;
+
+/**
+ * Bounded k-hop neighborhood highlight: focus = `primary`, each hop ring = `hop-1`/`hop-2`/…
+ * (open-ended `HighlightRole` strings — a renderer styles them as concentric distance bands), and
+ * edges induced within the neighborhood = `related`. Drives leveled focus on a target node.
+ */
+export function neighborhoodLayer(
+  index: GraphIndex,
+  focus: string[],
+  opts: { radius: number; direction?: Direction },
+): OverlayLayer {
+  const dist = neighborhood(index, focus, opts);
+  const nodes: RoleMap = {};
+  for (const [node, d] of dist) nodes[node] = d === 0 ? 'primary' : `hop-${d}`;
+  const edges: RoleMap = {};
+  for (const node of dist.keys()) {
+    for (const { to, edge } of index.outgoing.get(node) ?? []) {
+      if (dist.has(to)) edges[edge] = 'related';
+    }
+  }
+  return { layer: 'neighborhood', nodes, edges };
+}
 
 /** Shortest-path highlight between two nodes (path nodes + the exact edges traversed), or null. */
 export function pathLayer(index: GraphIndex, source: string, target: string): OverlayLayer | null {
@@ -84,6 +106,7 @@ export function componentsLayer(index: GraphIndex): OverlayLayer {
 /** A declarative request for one or more overlay layers. */
 export interface OverlayRequest {
   path?: { source: string; target: string };
+  neighborhood?: { focus: string[]; radius: number; direction?: Direction };
   ancestorsOf?: string;
   descendantsOf?: string;
   stale?: string[];
@@ -137,6 +160,8 @@ export function computeOverlaysFromIndex(
   };
 
   tryKind(!!request.path, 'path', 'path', () => pathLayer(index, request.path!.source, request.path!.target));
+  tryKind(!!request.neighborhood, 'neighborhood', 'neighborhood', () =>
+    neighborhoodLayer(index, request.neighborhood!.focus, request.neighborhood!));
   tryKind(!!request.ancestorsOf, 'ancestorsOf', 'ancestors', () => ancestorsLayer(index, request.ancestorsOf!));
   tryKind(!!request.descendantsOf, 'descendantsOf', 'descendants', () => descendantsLayer(index, request.descendantsOf!));
   tryKind(!!request.stale, 'stale', 'stale', () => staleLayer(index, request.stale!));

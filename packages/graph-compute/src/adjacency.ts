@@ -102,6 +102,50 @@ export function reach(index: GraphIndex, start: string[], direction: 'forward' |
   return seen;
 }
 
+/** Traversal direction for neighborhood / ego queries. */
+export type Direction = 'forward' | 'backward' | 'both';
+
+/**
+ * Bounded k-hop **neighborhood** (ego graph) around a focus set: BFS to depth `radius`, returning
+ * each reached node's hop-distance from the focus (focus nodes = 0). `direction` follows
+ * successors (`'forward'`), predecessors (`'backward'`), or both (`'both'`, the undirected ego
+ * graph). Unlike `reach`, it is *bounded* and *distance-labelled* — the leveled-neighborhood
+ * primitive for focusing on a target in a large graph. O(V+E) within the radius. The distance map
+ * also powers "expand one more hop" (raise `radius`) and fade-by-distance focus.
+ */
+export function neighborhood(
+  index: GraphIndex,
+  focus: string[],
+  { radius, direction = 'both' }: { radius: number; direction?: Direction },
+): Map<string, number> {
+  const dist = new Map<string, number>();
+  const queue: string[] = [];
+  let head = 0;
+  for (const f of focus) {
+    if (!dist.has(f)) {
+      dist.set(f, 0);
+      queue.push(f);
+    }
+  }
+  const stepsOf = (node: string): AdjEntry[] => {
+    if (direction === 'forward') return index.outgoing.get(node) ?? [];
+    if (direction === 'backward') return index.incoming.get(node) ?? [];
+    return [...(index.outgoing.get(node) ?? []), ...(index.incoming.get(node) ?? [])];
+  };
+  while (head < queue.length) {
+    const cur = queue[head++];
+    const d = dist.get(cur)!;
+    if (d >= radius) continue; // bound the BFS at `radius` hops
+    for (const { to } of stepsOf(cur)) {
+      if (!dist.has(to)) {
+        dist.set(to, d + 1);
+        queue.push(to);
+      }
+    }
+  }
+  return dist;
+}
+
 /** Unweighted shortest path `source → target` (BFS) with the edges traversed, or null. */
 export function shortestPath(index: GraphIndex, source: string, target: string): Walk | null {
   if (source === target) return { nodes: [source], edges: [] };
