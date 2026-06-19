@@ -17,6 +17,7 @@ export type GraphView = 'node-link' | 'table' | 'matrix' | 'timeline' | 'form';
 /** Graph-theory / provenance overlays a graph supports (computed by `@zodal/graph-compute`). */
 export type TraversalKind =
   | 'path'
+  | 'neighborhood'
   | 'ancestors'
   | 'descendants'
   | 'stale'

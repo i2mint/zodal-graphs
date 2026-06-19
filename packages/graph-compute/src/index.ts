@@ -11,9 +11,10 @@
  */
 
 import type { CanonicalGraph, GraphCapabilities, OverlayLayer } from '@zodal/graph-core';
-import { buildIndex, topologicalOrder, type GraphIndex } from './adjacency.js';
+import { buildIndex, topologicalOrder, type GraphIndex, type Direction } from './adjacency.js';
 import {
   pathLayer,
+  neighborhoodLayer,
   ancestorsLayer,
   descendantsLayer,
   staleLayer,
@@ -33,6 +34,8 @@ export interface TraversalEngine {
   /** The underlying index (exposed for advanced use / further algorithms). */
   readonly index: GraphIndex;
   path(source: string, target: string): OverlayLayer | null;
+  /** Bounded k-hop neighborhood/ego around `focus`, with per-hop distance-band roles. */
+  neighborhood(focus: string[], opts: { radius: number; direction?: Direction }): OverlayLayer;
   ancestors(node: string): OverlayLayer;
   descendants(node: string): OverlayLayer;
   stale(changed: string[]): OverlayLayer;
@@ -49,6 +52,7 @@ export function createTraversalEngine(graph: CanonicalGraph): TraversalEngine {
   return {
     index,
     path: (source, target) => pathLayer(index, source, target),
+    neighborhood: (focus, opts) => neighborhoodLayer(index, focus, opts),
     ancestors: (node) => ancestorsLayer(index, node),
     descendants: (node) => descendantsLayer(index, node),
     stale: (changed) => staleLayer(index, changed),
