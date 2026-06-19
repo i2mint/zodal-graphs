@@ -243,9 +243,10 @@ the build taught us.
 1. **Matrix surface.** *Default:* **build thin heat-cell on TanStack** (preserves the
    cross-lens selection bridge) over adopting FINOS Perspective (forks the data pipeline).
    Far-horizon (P5); non-blocking.
-2. **`portTypeCompatible` depth.** *Default:* start conservative (exact base-type + wildcard),
-   widen toward covariance/refinements/unions only when a real case demands it. (Now
-   load-bearing per the execution decision — widen sooner if runtime type errors demand it.)
+2. **`portTypeCompatible` depth.** ✅ **Widened (checkpoint 9, PR #22, closes #2).** Now a
+   covariant structural-subtyping relation: numeric-refinement range containment, object width+depth
+   subtyping, array element covariance, tuple elementwise, and enum/literal value-sets (incl. enum →
+   primitive base). Still deferred: string-length refinements and refinement inclusivity nuance.
 3. **Python `funcRef` resolution strategy.** *Default (deferred to `@zodal/graph-runtime`):*
    support a pluggable `FuncRefResolver` with two reference implementations — Pyodide/WASM
    (fully in-browser) and a backend-delegating resolver — chosen by the consumer. Not needed

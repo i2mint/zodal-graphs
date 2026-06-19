@@ -125,3 +125,89 @@ describe('portTypeRefFromZod (reuses @zodal/core introspection)', () => {
     expect(portTypeCompatible(ref, portTypeRefFromZod(z.number()))).toBe(false);
   });
 });
+
+describe('portTypeCompatible — structural widening (covariant subtyping)', () => {
+  const compat = (out: z.ZodType, into: z.ZodType): boolean =>
+    portTypeCompatible(portTypeRefFromZod(out), portTypeRefFromZod(into));
+
+  it('numeric refinement covariance (constrained ⊆ looser)', () => {
+    expect(compat(z.number().min(0), z.number())).toBe(true); // constrained → unconstrained
+    expect(compat(z.number(), z.number().min(0))).toBe(false); // unconstrained → constrained
+    expect(compat(z.number().min(0).max(10), z.number().min(0))).toBe(true); // tighter ⊆ looser
+    expect(compat(z.number().min(0), z.number().min(5))).toBe(false); // [0,∞) ⊄ [5,∞)
+  });
+
+  it('array element covariance', () => {
+    expect(compat(z.array(z.number()), z.array(z.number()))).toBe(true);
+    expect(compat(z.array(z.number()), z.array(z.string()))).toBe(false);
+    expect(compat(z.array(z.number()), z.array(z.unknown()))).toBe(true); // into element is a wildcard
+  });
+
+  it('object width + depth subtyping', () => {
+    expect(compat(z.object({ a: z.number(), b: z.string() }), z.object({ a: z.number() }))).toBe(true); // extra field ok
+    expect(compat(z.object({ a: z.number() }), z.object({ a: z.number(), b: z.string() }))).toBe(false); // missing required field
+    expect(compat(z.object({ a: z.number() }), z.object({ a: z.number(), b: z.string().optional() }))).toBe(true); // optional target field
+    expect(compat(z.object({ a: z.string() }), z.object({ a: z.number() }))).toBe(false); // field type mismatch
+    expect(compat(z.object({ n: z.number().min(0) }), z.object({ n: z.number() }))).toBe(true); // recursive covariance
+    expect(compat(z.object({ n: z.number() }), z.object({ n: z.number().min(0) }))).toBe(false);
+  });
+
+  it('enum / literal value-set subset', () => {
+    expect(compat(z.enum(['a', 'b']), z.enum(['a', 'b', 'c']))).toBe(true); // subset
+    expect(compat(z.enum(['a', 'b', 'c']), z.enum(['a', 'b']))).toBe(false); // superset
+    expect(compat(z.literal('a'), z.enum(['a', 'b']))).toBe(true); // literal ∈ enum
+    expect(compat(z.literal('z'), z.enum(['a', 'b']))).toBe(false);
+  });
+
+  it('enum / literal of strings flows into a plain string', () => {
+    expect(compat(z.enum(['a', 'b']), z.string())).toBe(true);
+    expect(compat(z.literal('x'), z.string())).toBe(true);
+  });
+
+  it('tuple elementwise covariance (same arity)', () => {
+    expect(compat(z.tuple([z.number(), z.string()]), z.tuple([z.number(), z.string()]))).toBe(true);
+    expect(compat(z.tuple([z.number()]), z.tuple([z.number(), z.string()]))).toBe(false); // arity mismatch
+    expect(compat(z.tuple([z.number().min(0), z.string()]), z.tuple([z.number(), z.string()]))).toBe(true);
+  });
+});
+
+describe('portTypeCompatible — soundness (never silently permit; critic regressions)', () => {
+  const compat = (out: z.ZodType, into: z.ZodType): boolean =>
+    portTypeCompatible(portTypeRefFromZod(out), portTypeRefFromZod(into));
+
+  it('number does NOT flow into int (float would leak); int → int / int → number ok', () => {
+    expect(compat(z.number(), z.number().int())).toBe(false);
+    expect(compat(z.number().min(0).max(10), z.number().int())).toBe(false);
+    expect(compat(z.number().int(), z.number().int())).toBe(true);
+    expect(compat(z.number().int(), z.number())).toBe(true); // int ⊆ number
+  });
+
+  it('plain string does NOT flow into a refined string; refined → plain ok', () => {
+    expect(compat(z.string(), z.email())).toBe(false);
+    expect(compat(z.string(), z.string().min(5))).toBe(false);
+    expect(compat(z.string(), z.uuid())).toBe(false);
+    expect(compat(z.email(), z.string())).toBe(true); // email ⊆ string
+    expect(compat(z.string(), z.string())).toBe(true); // both unrefined
+  });
+
+  it('an opaque .refine() target rejects an unconstrained source', () => {
+    expect(compat(z.number(), z.number().refine((n) => n > 0))).toBe(false);
+    expect(compat(z.number().min(1), z.number())).toBe(true); // unrefined target still accepts
+  });
+
+  it('a numeric / heterogeneous enum does NOT flow into a string', () => {
+    expect(compat(z.enum({ Low: 1, High: 2 } as never), z.string())).toBe(false);
+    expect(compat(z.literal(1), z.string())).toBe(false);
+    expect(compat(z.literal(1), z.number())).toBe(true); // literal number → number ok
+  });
+
+  it('enum / literal of strings into a refined string rejects; into a plain string ok', () => {
+    expect(compat(z.literal('x'), z.string().min(5))).toBe(false); // 'x' too short, and string refined → reject
+    expect(compat(z.enum(['a', 'b']), z.string())).toBe(true);
+    expect(compat(z.enum(['a', 'b']), z.union([z.email(), z.number()]))).toBe(false); // no sound member
+  });
+
+  it('record/map/set are conservatively rejected (no structural capture yet)', () => {
+    expect(compat(z.record(z.string(), z.number()), z.record(z.string(), z.number()))).toBe(false);
+  });
+});
