@@ -28,6 +28,7 @@ import {
 
 export * from './adjacency.js';
 export * from './overlays.js';
+export * from './filter.js';
 
 /** A reusable engine bound to one graph (the index is built once). */
 export interface TraversalEngine {

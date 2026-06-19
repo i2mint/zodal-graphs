@@ -75,6 +75,43 @@ export interface GraphLayout {
   positions?: Record<string, { x: number; y: number }>;
 }
 
+// --- filtering --------------------------------------------------------------
+
+/** Comparison operators for a field predicate. */
+export type FilterOp =
+  | 'eq'
+  | 'ne'
+  | 'in'
+  | 'lt'
+  | 'lte'
+  | 'gt'
+  | 'gte'
+  | 'contains'
+  | 'exists';
+
+/**
+ * A declarative predicate over a node/edge. A *leaf* tests one `field` (`'id'`, `'type'`,
+ * `'kind'`, `'source'`/`'target'`, or a `data` key — `'scope'` or `'data.scope'`) with an `op`;
+ * composites combine leaves with `all` (AND) / `any` (OR) / `not`.
+ */
+export type FilterPredicate =
+  | { field: string; op: FilterOp; value?: unknown }
+  | { all: FilterPredicate[] }
+  | { any: FilterPredicate[] }
+  | { not: FilterPredicate };
+
+/**
+ * A declarative graph filter. `nodes`/`edges` are predicates (omitted = match all of that kind;
+ * an omitted `edges` keeps edges induced by the matched nodes). `mode` chooses focus semantics:
+ * `'hide'` extracts the matching subgraph; `'fade'` keeps structure and dims non-matching elements
+ * (focus + context). Renderer-agnostic — every lens consumes the same filter.
+ */
+export interface GraphFilter {
+  nodes?: FilterPredicate;
+  edges?: FilterPredicate;
+  mode?: 'hide' | 'fade';
+}
+
 /** Empty presentation state — a convenient starting point. */
 export const emptyOverlays = (): GraphOverlays => ({ highlights: [] });
 export const emptySelection = (): GraphSelection => ({ nodes: [], edges: [] });
