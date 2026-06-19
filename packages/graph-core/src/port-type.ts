@@ -10,11 +10,14 @@
  * **Semantics: covariant subtyping.** `portTypeCompatible(out, into)` is true iff every value `out`
  * can produce is acceptable to `into` — i.e. `out`'s value-set ⊆ `into`'s. It never *silently
  * permits* an invalid wire: when a type can't be introspected it is rejected, not waved through.
- * Beyond the wildcard / optional / nullable / union basics it now does structural subtyping:
- * numeric-refinement range containment, object width+depth subtyping, array element covariance,
- * tuple elementwise covariance, and enum/literal value-set subset (incl. enum → its primitive base).
- * String length refinements and refinement *inclusivity* nuance remain deferred (treated as
- * unconstrained).
+ * Beyond the wildcard / optional / nullable / union basics it does structural subtyping:
+ * numeric-refinement range containment, integer-vs-float, object width+depth subtyping, array element
+ * covariance, tuple elementwise covariance, and enum/literal value-set subset (incl. enum → its
+ * primitive base, with the value-set's true element type). Any UNMODELED constraint on the *target*
+ * (a refined string — email/min-length/regex; a numeric `multipleOf`/`.refine`) forces rejection
+ * rather than a silent permit — over-rejection is conservative, a false permit is not. Still
+ * conservatively rejected (no structural capture yet): `record` / `map` / `set` containers, and the
+ * exact params of string refinements (so even identical refined-string ports won't auto-connect).
  */
 
 import type { ZodType } from 'zod';
@@ -47,16 +50,25 @@ export interface PortTypeRef {
   optionalKeys?: string[];
   /** Allowed values (enum / literal). */
   values?: readonly unknown[];
-  /** The primitive base of `values` (e.g. an enum of strings has `valueBase: 'string'`). */
+  /** The primitive base of `values`; `'__mixed__'` for a heterogeneous value-set (matches no base). */
   valueBase?: string;
+  /** Integer-constrained number (`z.int()` / `z.number().int()` — int-ness lives in a format check). */
+  integer?: boolean;
+  /** Carries an UNMODELED constraint (string refinement, numeric `.refine()`/`multipleOf`, …). As a
+   *  TARGET this forces rejection — we can't prove a source's value-set ⊆ an unmodeled constraint. */
+  constrained?: boolean;
 }
 
 const WILDCARD_BASES = new Set(['unknown', 'any']);
 
 /** Bases whose token alone fully determines compatibility (no inner shape to compare). */
 const SCALAR_BASES = new Set(['string', 'boolean', 'date', 'symbol', 'null', 'undefined', 'nan', 'void']);
+// zod v4 collapses `z.int()`/`.int()` to base `number` (int-ness is a format check, captured as
+// `ref.integer`); `int`/`float` are kept for forward-safety but no current schema resolves to them.
 const NUMERIC_BASES = new Set(['number', 'int', 'float', 'bigint']);
 const VALUE_SET_BASES = new Set(['enum', 'literal']);
+/** A heterogeneous enum/literal value-set — matches no primitive base, so only value-set identity can permit. */
+const MIXED_VALUE_BASE = '__mixed__';
 
 /** Sentinel base for an un-introspectable schema — compatible only with a wildcard, never permissive. */
 const UNRESOLVED = '__unresolved__';
@@ -91,6 +103,7 @@ function captureStructure(ref: PortTypeRef, schema: ZodType, def: ZodDef): void 
     if (NUMERIC_BASES.has(ref.base)) {
       const bounds = safeNumericBounds(schema);
       if (bounds && (bounds.min !== undefined || bounds.max !== undefined)) ref.numeric = bounds;
+      captureNumericChecks(ref, def); // int-ness + opaque refinements (multipleOf / .refine)
       return;
     }
     if (ref.base === 'array') {
@@ -118,9 +131,9 @@ function captureStructure(ref: PortTypeRef, schema: ZodType, def: ZodDef): void 
     }
     if (ref.base === 'enum') {
       const values = safeEnumValues(schema);
-      if (values) {
+      if (values && values.length > 0) {
         ref.values = values;
-        ref.valueBase = 'string';
+        ref.valueBase = deriveValueBase(values);
       }
       return;
     }
@@ -128,9 +141,13 @@ function captureStructure(ref: PortTypeRef, schema: ZodType, def: ZodDef): void 
       const values = readLiteralValues(def);
       if (values && values.length > 0) {
         ref.values = values;
-        ref.valueBase = typeof values[0];
+        ref.valueBase = deriveValueBase(values);
       }
+      return;
     }
+    // Other scalars (string/boolean/date/…): any check is an UNMODELED constraint (email, min length,
+    // regex, .refine) — record it so a refined target rejects rather than silently permitting.
+    if (SCALAR_BASES.has(ref.base) && readCheckSources(def).length > 0) ref.constrained = true;
   } catch {
     /* leave the bare base — still a usable, conservative ref */
   }
@@ -170,11 +187,17 @@ export function portTypeCompatible(out: PortTypeRef, into: PortTypeRef): boolean
 
   if (o.base !== i.base) return false;
 
-  if (NUMERIC_BASES.has(o.base)) return numericSubset(o.numeric, i.numeric);
+  if (NUMERIC_BASES.has(o.base)) {
+    if (i.integer && !o.integer) return false; // float source into an int-only target — would leak non-integers
+    if (i.constrained) return false; // opaque numeric refinement on the target (multipleOf / .refine) — can't prove
+    return numericSubset(o.numeric, i.numeric);
+  }
   if (o.base === 'object') return objectSubset(o, i);
   if (o.base === 'array') return arraySubset(o, i);
   if (o.base === 'tuple') return tupleSubset(o, i);
-  return SCALAR_BASES.has(o.base); // string/boolean/date/… — base match suffices (length refinements deferred)
+  // string/boolean/date/…: base match suffices ONLY if the target carries no unmodeled refinement
+  // (a refined string target — email/min-length/regex — must reject, never silently permit).
+  return SCALAR_BASES.has(o.base) && !i.constrained;
 }
 
 /** out's numeric range ⊆ into's (into looser-or-equal). Unconstrained into accepts anything. */
@@ -222,13 +245,20 @@ function valueSetSubset(out: PortTypeRef, into: PortTypeRef): boolean {
   return out.values.every((v) => allowed.has(v));
 }
 
-/** An enum/literal flowing into its underlying primitive base (checking numeric bounds, if any). */
+/** An enum/literal flowing into its underlying primitive base (checking numeric bounds / int, if any). */
 function valueSetToPrimitive(out: PortTypeRef, into: PortTypeRef): boolean {
-  if (NUMERIC_BASES.has(into.base) && into.numeric) {
+  if (into.constrained) return false; // refined primitive target (e.g. string.min) — can't prove values satisfy it
+  if (NUMERIC_BASES.has(into.base)) {
     if (!out.values) return false;
-    return out.values.every((v) => typeof v === 'number' && numericValueInRange(v, into.numeric!));
+    return out.values.every(
+      (v) =>
+        typeof v === 'number' &&
+        Number.isFinite(v) &&
+        (!into.integer || Number.isInteger(v)) &&
+        (!into.numeric || numericValueInRange(v, into.numeric)),
+    );
   }
-  return true; // unrefined primitive target (string length deferred)
+  return true; // unrefined primitive target
 }
 
 function numericValueInRange(value: number, c: NumericConstraints): boolean {
@@ -252,6 +282,9 @@ interface ZodDef {
   shape?: Record<string, unknown>;
   values?: unknown;
   value?: unknown;
+  checks?: unknown;
+  check?: unknown;
+  format?: unknown;
 }
 
 function readDef(schema: unknown): ZodDef {
@@ -285,16 +318,63 @@ function coreBaseType(schema: ZodType): string {
   }
 }
 
+/** Finite numeric bounds only — `getNumericBounds` returns ±Infinity for an unbounded side; drop those
+ *  so `ref.numeric` is set ONLY when a real finite refinement exists (absent === unconstrained). */
 function safeNumericBounds(schema: ZodType): NumericConstraints | undefined {
   try {
     const b = getNumericBounds(schema);
-    return b && typeof b === 'object' ? b : undefined;
+    if (!b || typeof b !== 'object') return undefined;
+    const out: NumericConstraints = {};
+    if (Number.isFinite(b.min)) out.min = b.min as number;
+    if (Number.isFinite(b.max)) out.max = b.max as number;
+    return out;
   } catch {
     return undefined;
   }
 }
 
-function safeEnumValues(schema: ZodType): string[] | undefined {
+/** Detect int-ness (a format check) and opaque numeric refinements (multipleOf / `.refine`) from def checks. */
+function captureNumericChecks(ref: PortTypeRef, def: ZodDef): void {
+  for (const check of readCheckSources(def)) {
+    const kind = checkKind(check);
+    const format = checkFormat(check);
+    if (/int/i.test(format) || /int/i.test(kind)) {
+      ref.integer = true;
+    } else if (kind === 'custom' || kind === 'multiple_of' || kind === 'number_format') {
+      ref.constrained = true; // an unmodeled constraint beyond min/max — reject as a target
+    }
+  }
+}
+
+/** All values share a typeof → that primitive; otherwise the no-match {@link MIXED_VALUE_BASE} sentinel. */
+function deriveValueBase(values: readonly unknown[]): string {
+  const first = typeof values[0];
+  return values.every((v) => typeof v === first) ? first : MIXED_VALUE_BASE;
+}
+
+function readChecks(def: ZodDef): unknown[] {
+  return Array.isArray(def.checks) ? def.checks : [];
+}
+
+/** Check descriptors: the `def.checks` array PLUS the def itself when a zod v4 format type
+ *  (`z.email`/`z.uuid`/`z.int`) carries its check/format directly on the def (no checks array). */
+function readCheckSources(def: ZodDef): unknown[] {
+  const sources = readChecks(def);
+  if (def.check !== undefined || def.format !== undefined) return [...sources, def];
+  return sources;
+}
+
+function checkKind(check: unknown): string {
+  const c = check as { _zod?: { def?: { check?: string } }; def?: { check?: string }; check?: string; kind?: string };
+  return c?._zod?.def?.check ?? c?.def?.check ?? c?.check ?? c?.kind ?? '';
+}
+
+function checkFormat(check: unknown): string {
+  const c = check as { _zod?: { def?: { format?: string } }; def?: { format?: string }; format?: string };
+  return c?._zod?.def?.format ?? c?.def?.format ?? c?.format ?? '';
+}
+
+function safeEnumValues(schema: ZodType): unknown[] | undefined {
   try {
     const v = getEnumValues(schema);
     return Array.isArray(v) ? v : undefined;

@@ -170,3 +170,44 @@ describe('portTypeCompatible — structural widening (covariant subtyping)', () 
     expect(compat(z.tuple([z.number().min(0), z.string()]), z.tuple([z.number(), z.string()]))).toBe(true);
   });
 });
+
+describe('portTypeCompatible — soundness (never silently permit; critic regressions)', () => {
+  const compat = (out: z.ZodType, into: z.ZodType): boolean =>
+    portTypeCompatible(portTypeRefFromZod(out), portTypeRefFromZod(into));
+
+  it('number does NOT flow into int (float would leak); int → int / int → number ok', () => {
+    expect(compat(z.number(), z.number().int())).toBe(false);
+    expect(compat(z.number().min(0).max(10), z.number().int())).toBe(false);
+    expect(compat(z.number().int(), z.number().int())).toBe(true);
+    expect(compat(z.number().int(), z.number())).toBe(true); // int ⊆ number
+  });
+
+  it('plain string does NOT flow into a refined string; refined → plain ok', () => {
+    expect(compat(z.string(), z.email())).toBe(false);
+    expect(compat(z.string(), z.string().min(5))).toBe(false);
+    expect(compat(z.string(), z.uuid())).toBe(false);
+    expect(compat(z.email(), z.string())).toBe(true); // email ⊆ string
+    expect(compat(z.string(), z.string())).toBe(true); // both unrefined
+  });
+
+  it('an opaque .refine() target rejects an unconstrained source', () => {
+    expect(compat(z.number(), z.number().refine((n) => n > 0))).toBe(false);
+    expect(compat(z.number().min(1), z.number())).toBe(true); // unrefined target still accepts
+  });
+
+  it('a numeric / heterogeneous enum does NOT flow into a string', () => {
+    expect(compat(z.enum({ Low: 1, High: 2 } as never), z.string())).toBe(false);
+    expect(compat(z.literal(1), z.string())).toBe(false);
+    expect(compat(z.literal(1), z.number())).toBe(true); // literal number → number ok
+  });
+
+  it('enum / literal of strings into a refined string rejects; into a plain string ok', () => {
+    expect(compat(z.literal('x'), z.string().min(5))).toBe(false); // 'x' too short, and string refined → reject
+    expect(compat(z.enum(['a', 'b']), z.string())).toBe(true);
+    expect(compat(z.enum(['a', 'b']), z.union([z.email(), z.number()]))).toBe(false); // no sound member
+  });
+
+  it('record/map/set are conservatively rejected (no structural capture yet)', () => {
+    expect(compat(z.record(z.string(), z.number()), z.record(z.string(), z.number()))).toBe(false);
+  });
+});
