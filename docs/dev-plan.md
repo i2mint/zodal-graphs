@@ -11,26 +11,28 @@
 > rationale; the few genuinely-open ones are flagged with a working default so building is
 > never blocked.
 
-**Status (2026-06-18):** Horizon 2 + Horizon 3 core **built and merged** — 7 packages on `main`,
-composing end-to-end (a monorepo `tests/integration/` proves it), ~168 tests green, nothing
-published (first npm publish gated on owner approval). Built so far:
+**Status (2026-06-19):** Horizons 2 + 3 + both genuinely-new modules **built and merged** — 8
+packages on `main`, composing end-to-end (a monorepo `tests/integration/` proves it), ~224 tests
+green, **zero open issues**, nothing published (first npm publish gated on owner approval). Built:
 
 | Package | Role | Checkpoint / PR |
 |---|---|---|
-| `@zodal/graph-core` | canonical model, capabilities, `defineGraph`, serializer, adapters, `portTypeCompatible` v0 | 1 / #6 |
+| `@zodal/graph-core` | canonical model, capabilities, `defineGraph`, serializer, adapters, **`portTypeCompatible`** (covariant structural subtyping) | 1 / #6 · 9 / #22 |
 | `@zodal/graph-ui` | capability-ranked, rank-and-degrade renderer registry (the 3-registry architecture) | 2 / #8 |
 | `@zodal/graph-compute` | renderer-agnostic traversal + provenance overlays | 3 / #10 |
 | `@zodal/graph-react-flow` | typed-port editor (`makeIsValidConnection`) | 4 / #12 |
 | `@zodal/graph-runtime` | in-browser dataflow execution engine (`run`/`runSteps`/`recompute`) | 5 / #15 |
 | `@zodal/graph-sigma` | large-sparse WebGL viz renderer + overlay styling | 6 / #17 |
 | `@zodal/graph-table` | table / matrix / form lenses (data shaping + view switching) | 7 / #19 |
+| `@zodal/graph-timeline` | bespoke ELAN-style interval timeline — rational time, half-open intervals, **Allen's 13 relations** | 8 / #21 |
 
-Each shipped via build → adversarial critic → fix → CI-green PR → merge. **Remaining (far horizon):**
-`@zodal/graph-timeline` (bespoke ELAN-style interval timeline — the largest custom build, issue #3);
-the React component bodies deferred from the renderer/lens checkpoints (TanStack table + shadcn forms,
-heat-cell matrix, value-watch overlay, collapse↔expand, real layout); `portTypeCompatible` widening
-(issue #2); per-field/per-port affordance generators in `@zodal/graph-ui`; the `GraphDataProvider` /
-server-networkx boundary; and the huge-scale columnar-overlay projection.
+Each shipped via build → adversarial critic → fix → CI-green PR → merge. **Both genuinely-new modules
+the research identified are done** (`portTypeCompatible` widened + the interval timeline). **Remaining
+(far horizon, no issues yet):** the React component bodies deferred from the renderer/lens checkpoints
+(TanStack table + shadcn forms, heat-cell matrix, value-watch overlay, collapse↔expand, real layout +
+`@visx/brush`); per-field/per-port affordance generators in `@zodal/graph-ui`; the `GraphDataProvider`
+/ server-networkx boundary; the huge-scale columnar-overlay projection; and (small, deferred) string
+refinement params + `record`/`map`/`set` in `portTypeCompatible`.
 
 ---
 
