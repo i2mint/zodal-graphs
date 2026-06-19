@@ -20,8 +20,52 @@ import type {
 } from '@zodal/graph-core';
 import type { GraphIndex } from './adjacency.js';
 import { reach, shortestPath, findCycle, connectedComponents, neighborhood, type Direction } from './adjacency.js';
+import {
+  community,
+  criticalPath,
+  degreeCentrality,
+  pagerank,
+  betweenness,
+  type CentralityKind,
+} from './metrics.js';
 
 type RoleMap = Record<string, HighlightRole>;
+
+const centralityScores = (index: GraphIndex, kind: CentralityKind): Map<string, number> =>
+  kind === 'pagerank' ? pagerank(index) : kind === 'betweenness' ? betweenness(index) : degreeCentrality(index);
+
+/** Colour nodes by community (`community:0`, `community:1`, …) via label propagation. */
+export function communityLayer(index: GraphIndex): OverlayLayer {
+  const nodes: RoleMap = {};
+  for (const [n, c] of community(index)) nodes[n] = `community:${c}`;
+  return { layer: 'community', nodes };
+}
+
+/** Highlight the longest (most-weighted) DAG path (nodes + edges = `path`), or null if cyclic. */
+export function criticalPathLayer(
+  index: GraphIndex,
+  weightOf?: (edgeId: string) => number,
+): OverlayLayer | null {
+  const walk = criticalPath(index, weightOf);
+  if (!walk) return null;
+  const nodes: RoleMap = {};
+  const edges: RoleMap = {};
+  for (const n of walk.nodes) nodes[n] = 'path';
+  for (const e of walk.edges) edges[e] = 'path';
+  return { layer: 'critical-path', nodes, edges };
+}
+
+/** Highlight the most-central nodes: the top `topFraction` by `kind` centrality become `primary`. */
+export function centralityLayer(
+  index: GraphIndex,
+  { kind = 'pagerank', topFraction = 0.1 }: { kind?: CentralityKind; topFraction?: number } = {},
+): OverlayLayer {
+  const scores = [...centralityScores(index, kind)].sort((a, b) => b[1] - a[1]);
+  const cut = Math.max(1, Math.round(scores.length * topFraction));
+  const nodes: RoleMap = {};
+  scores.slice(0, cut).forEach(([n]) => (nodes[n] = 'primary'));
+  return { layer: `centrality:${kind}`, nodes };
+}
 
 /**
  * Bounded k-hop neighborhood highlight: focus = `primary`, each hop ring = `hop-1`/`hop-2`/…
@@ -113,6 +157,9 @@ export interface OverlayRequest {
   provenanceOf?: string;
   cycles?: boolean;
   components?: boolean;
+  community?: boolean;
+  criticalPath?: boolean;
+  centrality?: { kind?: CentralityKind; topFraction?: number };
 }
 
 /** A requested layer the engine refused to compute, and why (honest, like graph-ui's degrade). */
@@ -167,6 +214,9 @@ export function computeOverlaysFromIndex(
   tryKind(!!request.stale, 'stale', 'stale', () => staleLayer(index, request.stale!));
   tryKind(!!request.cycles, 'cycles', 'cycles', () => cyclesLayer(index));
   tryKind(!!request.components, 'components', 'components', () => componentsLayer(index));
+  tryKind(!!request.community, 'community', 'community', () => communityLayer(index));
+  tryKind(!!request.criticalPath, 'criticalPath', 'critical-path', () => criticalPathLayer(index));
+  tryKind(!!request.centrality, 'centrality', 'centrality', () => centralityLayer(index, request.centrality!));
 
   if (request.provenanceOf) {
     if (!capabilities || capabilities.hasProvenance) {
