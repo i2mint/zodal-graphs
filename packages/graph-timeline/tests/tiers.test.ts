@@ -45,6 +45,30 @@ describe('validateTier — unconstrained stereotypes', () => {
     const children = [ann('a', 'free', 0, 5), ann('b', 'free', 3, 8)]; // overlapping is fine for none
     expect(validateTier(tier, children)).toEqual([]);
   });
+
+  it('a `symbolic-subdivision` tier is not interval-validated (no time)', () => {
+    const tier: Tier = { id: 'sym', stereotype: 'symbolic-subdivision', parent: 'p' };
+    const children = [ann('a', 'sym', 0, 5), ann('b', 'sym', 3, 8)]; // overlap not flagged for symbolic
+    expect(validateTier(tier, children, [ann('p', 'p', 0, 10)])).toEqual([]);
+  });
+});
+
+describe('validateTier — instant (zero-measure) children', () => {
+  it('accepts an instant child exactly at the parent start boundary (instant-correct containment)', () => {
+    const tier: Tier = { id: 'pts', stereotype: 'included-in', parent: 'p' };
+    const children: Annotation[] = [{ id: 'pt', tier: 'pts', interval: interval(3, 3) }]; // instant at parent start
+    expect(validateTier(tier, children, [ann('p1', 'p', 3, 8)])).toEqual([]); // was a false violation
+  });
+
+  it('flags two coincident-instant annotations as overlapping on a subdivision tier', () => {
+    const tier: Tier = { id: 's', stereotype: 'time-subdivision', parent: 'p' };
+    const children: Annotation[] = [
+      { id: 'a', tier: 's', interval: interval(5, 5) },
+      { id: 'b', tier: 's', interval: interval(5, 5) },
+    ];
+    const violations = validateTier(tier, children, [ann('p1', 'p', 0, 10)]);
+    expect(violations.some((v) => v.reason.includes('overlaps'))).toBe(true);
+  });
 });
 
 describe('validateTiers (whole model)', () => {

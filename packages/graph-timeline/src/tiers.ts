@@ -2,14 +2,19 @@
  * ELAN-style tiers and their stereotype constraints.
  *
  * Annotations live on tiers; a tier may be linked to a parent tier with one of five ELAN
- * stereotypes. The two with real interval constraints are validated here:
- *  - `time-subdivision` / `included-in`: each child annotation must lie WITHIN a parent annotation;
- *  - `time-subdivision` / `symbolic-subdivision`: child annotations on the tier must be DISJOINT.
- * (`symbolic-association` is a 1:1 link and `none` is independent — no interval constraint.)
+ * stereotypes. The interval constraints validated here (using the instant-correct `within` /
+ * `disjoint` predicates, NOT the proper-interval Allen relation sets):
+ *  - `included-in` / `time-subdivision`: each child annotation must lie WITHIN a parent annotation;
+ *  - `time-subdivision`: child annotations on the tier must additionally be DISJOINT.
+ *
+ * Deferred / not time-validated: `time-subdivision` *coverage* (ELAN requires children to partition
+ * the parent with no GAPS — only containment + disjointness are checked here); `symbolic-subdivision`
+ * and `symbolic-association` carry no independent interval, so no interval constraint is applied;
+ * `none` is independent.
  */
 
 import type { Interval } from './interval.js';
-import { relate, WITHIN, DISJOINT } from './interval.js';
+import { within, disjoint } from './interval.js';
 
 export type TierStereotype =
   | 'none'
@@ -67,11 +72,11 @@ export function validateTier(
 ): TierViolation[] {
   const violations: TierViolation[] = [];
   const needsContainment = tier.stereotype === 'included-in' || tier.stereotype === 'time-subdivision';
-  const needsDisjoint = tier.stereotype === 'time-subdivision' || tier.stereotype === 'symbolic-subdivision';
+  const needsDisjoint = tier.stereotype === 'time-subdivision'; // symbolic tiers carry no real interval
 
   if (needsContainment) {
     for (const child of annotations) {
-      const contained = parentAnnotations.some((p) => relate(child.interval, p.interval, WITHIN));
+      const contained = parentAnnotations.some((p) => within(child.interval, p.interval));
       if (!contained) {
         violations.push({ annotation: child.id, reason: `not contained within any parent annotation on "${tier.parent ?? '?'}"` });
       }
@@ -81,7 +86,7 @@ export function validateTier(
   if (needsDisjoint) {
     for (let i = 0; i < annotations.length; i++) {
       for (let j = i + 1; j < annotations.length; j++) {
-        if (!relate(annotations[i].interval, annotations[j].interval, DISJOINT)) {
+        if (!disjoint(annotations[i].interval, annotations[j].interval)) {
           violations.push({ annotation: annotations[j].id, reason: `overlaps "${annotations[i].id}" on a subdivision tier` });
         }
       }

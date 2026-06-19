@@ -24,7 +24,10 @@ export const timelineCapabilities: RendererCapabilities = {
   intervals: true, // THE interval renderer
   traversalOverlays: [],
   views: ['timeline'],
-  maxComfortableNodes: 50_000,
+  // Un-virtualized SVG (one <rect> per annotation) + a linear-scan window query: comfortable into
+  // the low thousands — a benchmark default, to measure. Raise once interval-tree indexing +
+  // rect virtualization land (deferred). Comparable to the React Flow SVG band.
+  maxComfortableNodes: 2_000,
   layoutEngines: [],
   rendering: 'svg',
   side: 'client',

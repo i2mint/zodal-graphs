@@ -6,6 +6,10 @@
  * Convention: a node is an annotation when its `data` carries `{ tier, start, end }` (optionally
  * `value`, `stereotype`, `parentTier`). `start`/`end` are a number or `{ v, r }` rational time.
  * Nodes without that shape are skipped — a timeline shows the interval-bearing subset of a graph.
+ *
+ * A tier's `stereotype`/`parentTier` are taken from the FIRST interval-bearing node seen for that
+ * tier (graph node order); later nodes that disagree are ignored. Keep a tier's metadata consistent
+ * across its annotations.
  */
 
 import type { CanonicalGraph } from '@zodal/graph-core';

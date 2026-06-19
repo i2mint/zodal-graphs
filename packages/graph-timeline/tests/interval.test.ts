@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { compareTime, rational, subTime, toNumber } from '../src/headless.js';
-import { allen, intersects, interval, inverse, isInstant, relate, type AllenRelation } from '../src/headless.js';
+import { allen, disjoint, intersects, interval, inverse, isInstant, relate, within, type AllenRelation } from '../src/headless.js';
 
 // Each row: a, b, and the expected relation of a to b.
 const CASES: Array<[[number, number], [number, number], AllenRelation]> = [
@@ -68,6 +68,48 @@ describe('relate + interval construction', () => {
   it('rejects an interval with end < start', () => {
     expect(() => interval(5, 3)).toThrow(/end must be >= start/);
   });
+
+  it('rejects non-finite endpoints (NaN / Infinity fail fast)', () => {
+    expect(() => interval(NaN, 5)).toThrow(/finite/);
+    expect(() => interval(0, Infinity)).toThrow(/finite/);
+  });
+});
+
+describe('instants (zero-measure)', () => {
+  it('two coincident instants are equal, and equal is self-inverse', () => {
+    expect(allen(interval(5, 5), interval(5, 5))).toBe('equals');
+    expect(inverse('equals')).toBe('equals');
+  });
+
+  it('two instants at different times precede / are preceded', () => {
+    expect(allen(interval(3, 3), interval(5, 5))).toBe('precedes');
+    expect(allen(interval(5, 5), interval(3, 3))).toBe('preceded-by');
+  });
+
+  it('inverse-consistency holds for ALL pairs incl. instants (brute force over endpoints 0..3)', () => {
+    const intervals: ReturnType<typeof interval>[] = [];
+    for (let s = 0; s <= 3; s++) for (let e = s; e <= 3; e++) intervals.push(interval(s, e));
+    for (const a of intervals) {
+      for (const b of intervals) {
+        expect(allen(a, b)).toBe(inverse(allen(b, a)));
+      }
+    }
+  });
+});
+
+describe('within / disjoint (instant-correct, half-open semantics)', () => {
+  it('within: proper containment and an instant on the start boundary', () => {
+    expect(within(interval(4, 9), interval(0, 10))).toBe(true); // during
+    expect(within(interval(3, 3), interval(3, 8))).toBe(true); // instant at parent start IS within
+    expect(within(interval(8, 8), interval(3, 8))).toBe(false); // instant at exclusive end is NOT within
+    expect(within(interval(0, 12), interval(3, 8))).toBe(false); // escapes the parent
+  });
+
+  it('disjoint is the exact complement of intersects', () => {
+    expect(disjoint(interval(0, 2), interval(3, 5))).toBe(true);
+    expect(disjoint(interval(3, 3), interval(3, 8))).toBe(false); // instant inside → not disjoint
+    expect(disjoint(interval(5, 5), interval(5, 5))).toBe(false); // coincident instants share the point
+  });
 });
 
 describe('rational time', () => {
@@ -78,6 +120,11 @@ describe('rational time', () => {
 
   it('normalizes a negative denominator', () => {
     expect(rational(1, -2)).toEqual({ v: -1, r: 2 });
+  });
+
+  it('normalizes negative zero to positive zero', () => {
+    expect(Object.is(rational(0, -3).v, -0)).toBe(false);
+    expect(rational(0, -3)).toEqual({ v: 0, r: 3 });
   });
 
   it('subtracts exactly', () => {

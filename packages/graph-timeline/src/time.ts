@@ -4,8 +4,14 @@
  * Annotation timelines (lacing, ELAN/Praat, audio/music alignment) need sample-accurate time, so
  * the model layer is rational rather than floating-point: a frame `1234` at rate `48000` is exactly
  * `{ v: 1234, r: 48000 }`, comparable and subtractable without rounding drift. A plain number `n` is
- * accepted everywhere and treated as `{ v: n, r: 1 }`. The denominator is normalized positive so
- * cross-multiplication comparison is sign-safe.
+ * accepted everywhere and treated as `{ v: n, r: 1 }`. The denominator is normalized positive (and
+ * `-0` normalized to `0`) so cross-multiplication comparison is sign-safe; non-finite values are
+ * rejected so a `NaN` can never masquerade as a valid, "equal" time.
+ *
+ * Precondition: comparison/subtraction use IEEE-double cross-products, so they are EXACT only while
+ * `|v * r| < 2^53` (`Number.MAX_SAFE_INTEGER`). That is ~1086 hours of 48kHz frames in a single
+ * stream; mixing very high resolutions (subTree multiplies denominators) reaches it sooner. A
+ * BigInt cross-multiplication is the long-term fix; for now this is the documented safe domain.
  */
 
 export interface RationalTime {
@@ -15,15 +21,20 @@ export interface RationalTime {
 
 export type TimeInput = number | RationalTime;
 
-/** Construct a normalized rational time (`r > 0`). */
+/** Construct a normalized rational time (`r > 0`, `-0`→`0`); throws on non-finite or zero `r`. */
 export function rational(v: number, r = 1): RationalTime {
+  if (!Number.isFinite(v) || !Number.isFinite(r)) {
+    throw new Error(`graph-timeline: rational time must be finite (got v=${v}, r=${r})`);
+  }
   if (r === 0) throw new Error('graph-timeline: rational time resolution must be non-zero');
-  return r < 0 ? { v: -v, r: -r } : { v, r };
+  const sign = r < 0 ? -1 : 1;
+  const nv = v * sign;
+  return { v: nv === 0 ? 0 : nv, r: Math.abs(r) };
 }
 
-/** Coerce a number or rational to a normalized {@link RationalTime}. */
+/** Coerce a number or rational to a normalized {@link RationalTime} (validating finiteness). */
 export function toRational(t: TimeInput): RationalTime {
-  return typeof t === 'number' ? { v: t, r: 1 } : rational(t.v, t.r);
+  return typeof t === 'number' ? rational(t) : rational(t.v, t.r);
 }
 
 /** The floating-point value `v / r` (lossy — for display / scales, not comparison). */

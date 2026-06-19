@@ -69,11 +69,19 @@ export function inverse(relation: AllenRelation): AllenRelation {
 }
 
 /**
- * The single Allen relation of `a` to `b`. Endpoint algebra — correct and exhaustive for proper
- * intervals. For instants the result follows the endpoint rules (e.g. an instant exactly at `b.end`
- * of a half-open `b` reads as `met-by`); use {@link intersects} for the "is it in the window" query.
+ * The single Allen relation of `a` to `b`. Endpoint algebra — proven mutually-exclusive,
+ * exhaustive, and inverse-consistent for proper intervals. Two coincident instants are special-cased
+ * to `equals` (so `allen(a,b) === inverse(allen(b,a))` holds for them); other instant/boundary cases
+ * follow the endpoint rules and may read as `meets`/`met-by`. **For instant-aware "is it inside /
+ * overlapping" questions use {@link intersects} / {@link within} / {@link disjoint}**, which honor
+ * the half-open `[start, end)` semantics; `allen` is the relation *algebra*, not the overlap test.
  */
 export function allen(a: Interval, b: Interval): AllenRelation {
+  // Two zero-measure instants relate purely by their point — and `equals` is self-inverse.
+  if (isInstant(a) && isInstant(b)) {
+    const c = compareTime(a.start, b.start);
+    return c < 0 ? 'precedes' : c > 0 ? 'preceded-by' : 'equals';
+  }
   const aEndVsBStart = compareTime(a.end, b.start);
   if (aEndVsBStart < 0) return 'precedes';
   if (aEndVsBStart === 0) return 'meets';
@@ -99,13 +107,29 @@ export function relate(a: Interval, b: Interval, relations: readonly AllenRelati
  * an instant at `t` intersects `[s, e)` iff `s <= t < e`.
  */
 export function intersects(a: Interval, b: Interval): boolean {
+  if (isInstant(a) && isInstant(b)) return compareTime(a.start, b.start) === 0; // same instant
   if (isInstant(a)) return timeLte(b.start, a.start) && timeLt(a.start, b.end);
   if (isInstant(b)) return timeLte(a.start, b.start) && timeLt(b.start, a.end);
   return timeLt(a.start, b.end) && timeLt(b.start, a.end);
 }
 
-/** Relations that mean "a is within b" (used by tier containment checks). */
+/** Allen relations that mean "a is within b" — valid for PROPER intervals; for instants use {@link within}. */
 export const WITHIN: readonly AllenRelation[] = ['during', 'starts', 'finishes', 'equals'];
 
-/** Relations that mean "a and b are disjoint" (don't share time). */
+/** Allen relations that mean "a and b are disjoint" — valid for PROPER intervals; for instants use {@link disjoint}. */
 export const DISJOINT: readonly AllenRelation[] = ['precedes', 'meets', 'preceded-by', 'met-by'];
+
+/**
+ * Is `a`'s whole range contained in `b`? Instant-correct (an instant `[t,t)` is within `b` iff it is
+ * IN `b`, i.e. `b.start <= t < b.end`). Prefer this over `relate(a, b, WITHIN)`, which mis-handles
+ * instants on a parent's start/end boundary.
+ */
+export function within(a: Interval, b: Interval): boolean {
+  if (isInstant(a)) return intersects(a, b);
+  return timeLte(b.start, a.start) && timeLte(a.end, b.end);
+}
+
+/** Do `a` and `b` NOT share any time? The instant-correct complement of {@link intersects}. */
+export function disjoint(a: Interval, b: Interval): boolean {
+  return !intersects(a, b);
+}

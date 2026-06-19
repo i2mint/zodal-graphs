@@ -26,10 +26,12 @@ export function TimelineView({ graph, window, width = 800, height = 300 }: Timel
   const model = toTimeline(graph);
   const extent = timelineExtent(model);
 
-  const xScale = scaleLinear<number>({
-    domain: extent ? [toNumber(extent.start), toNumber(extent.end)] : [0, 1],
-    range: [0, width],
-  });
+  // Pad a zero-width extent (all annotations at one instant) so they don't collapse onto a 1px sliver.
+  const lo = extent ? toNumber(extent.start) : 0;
+  const hi = extent ? toNumber(extent.end) : 1;
+  const domain: [number, number] = lo === hi ? [lo - 0.5, hi + 0.5] : [lo, hi];
+
+  const xScale = scaleLinear<number>({ domain, range: [0, width] });
   const yScale = scaleBand<string>({
     domain: model.tiers.map((t) => t.id),
     range: [0, height],

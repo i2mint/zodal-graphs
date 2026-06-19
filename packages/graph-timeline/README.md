@@ -49,12 +49,15 @@ optional `window` marks intersecting annotations.
 
 ## Scope (this checkpoint)
 
-**Built + tested:** rational `{v,r}` time, half-open intervals, **Allen's 13 relations** (+ `inverse`,
-`relate`, instant-correct `intersects`), the five ELAN tier stereotypes + containment/disjointness
-validation, timeline data shaping + window / relation queries + extent, and the OVERRIDE registry
-entry. **Thin shell:** `TimelineView` (typecheck + build only). **Deferred:** real brushing
-(`@visx/brush`), zoom, tier labels + the rational-time axis, large-dataset interval-tree indexing
-(currently a linear scan), and Allen-relation composition.
+**Built + tested:** rational `{v,r}` time (NaN-rejecting, sample-accurate), half-open intervals,
+**Allen's 13 relations** (+ `inverse`, `relate`, and the instant-correct `intersects` / `within` /
+`disjoint`), the five ELAN tier stereotypes + containment/disjointness validation, timeline data
+shaping + window / relation queries + extent, and the OVERRIDE registry entry. **Thin shell:**
+`TimelineView` (typecheck + build only). **Deferred:** `time-subdivision` **coverage** (gapless
+partition) validation — only containment + disjointness are checked; real brushing (`@visx/brush`),
+zoom, tier labels + the rational-time axis; large-dataset interval-tree indexing (currently a linear
+scan); BigInt cross-multiplication for times beyond the 2^53 safe-integer domain; and Allen-relation
+composition.
 
 ## Status
 
