@@ -48,9 +48,13 @@ stylers into sigma's node/edge reducers.
 
 **Built + tested:** the honest `sigmaCapabilities` + registry entry (wins at large scale, degrades
 ports/editing), and the `nodeOverlayStyle` / `edgeOverlayStyle` overlay-drawing bridge (role colours,
-focus-mode dimming, `component:N` palette). **Thin shell:** `SigmaView` (typecheck + build only).
-**Deferred:** a real layout pass (ForceAtlas2 / noverlap), force-sim controls, crossfilter panels,
-lasso / ego-expand, and styling polish.
+focus-mode dimming, `component:N` palette). **Component:** `SigmaView` — creates the Sigma instance
+once per graph (camera preserved across overlay changes), renders an empty state for a node-less
+graph, and degrades to an error overlay when WebGL context creation fails (rather than throwing).
+Render-tested over happy-dom: the empty state + the WebGL-unavailable error path (NOT the live WebGL
+canvas — `SigmaView` is a client-only component; `sigma` reads WebGL globals at import). **Deferred:**
+a real layout pass (ForceAtlas2 / noverlap), force-sim controls, crossfilter panels, lasso /
+ego-expand, and styling polish.
 
 ## Status
 

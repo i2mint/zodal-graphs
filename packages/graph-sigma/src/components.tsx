@@ -63,9 +63,14 @@ export function SigmaView({ graph, overlays, styleOptions }: SigmaViewProps): Re
 
     let renderer: Sigma;
     try {
-      renderer = new Sigma(g, container); // throws where WebGL is unavailable (SSR, jsdom/happy-dom, headless)
+      // Throws when WebGL CONTEXT creation fails (headless browser / happy-dom — getContext yields
+      // null). NB: a true non-DOM runtime throws earlier, at sigma's import (see the module docstring).
+      renderer = new Sigma(g, container);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Sigma could not initialise (WebGL unavailable).');
+      // Normalize sigma's internal error (often a null-deref) into a stable, user-facing message —
+      // never leak an internal stack string. The raw cause is logged for debugging.
+      console.warn('SigmaView: Sigma failed to initialise:', cause);
+      setError('WebGL is unavailable in this environment.');
       return;
     }
     sigmaRef.current = renderer;
@@ -75,7 +80,9 @@ export function SigmaView({ graph, overlays, styleOptions }: SigmaViewProps): Re
     };
   }, [graph, isEmpty]);
 
-  // Apply overlays/styling on the EXISTING instance (no rebuild → camera preserved).
+  // Apply overlays/styling on the EXISTING instance (no rebuild → camera preserved). NB: pass
+  // referentially-stable `overlays`/`styleOptions` (memoize them) — a new identity each render
+  // re-runs setSetting+refresh; a mutated-in-place object won't re-run at all.
   useEffect(() => {
     const renderer = sigmaRef.current;
     if (!renderer) return;

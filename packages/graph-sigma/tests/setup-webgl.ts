@@ -1,8 +1,9 @@
 /**
- * Test setup: stub the WebGL globals that the `sigma` package references at MODULE-LOAD time, so it
- * can be imported under happy-dom (which has no WebGL). Actual context creation still fails at
- * runtime → `SigmaView`'s try/catch renders the error overlay, which is the path the render tests
- * exercise. Harmless for the node-env headless tests (they never touch these globals).
+ * Test setup: stub the WebGL globals that the `sigma` package reads at MODULE-LOAD time, so it can be
+ * IMPORTED under happy-dom (which has no WebGL). The stub only enables the import — it does NOT
+ * provide a working context. The actual failure the render tests exercise is `canvas.getContext`
+ * returning null at runtime, which makes `new Sigma(...)` throw; `SigmaView`'s try/catch then renders
+ * the error overlay. Harmless for the node-env headless tests (they never touch these globals).
  */
 
 class WebGLStub {}

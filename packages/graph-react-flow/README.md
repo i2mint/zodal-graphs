@@ -52,11 +52,13 @@ import '@xyflow/react/dist/style.css';
 **Built + tested:** `makeIsValidConnection` + `lookupPort` (the headless P1 seam — rejects
 type-incompatible wires, unknown ports, and self-connections), the **honest** `reactFlowCapabilities`
 (it reports `false` for `compoundNodes`/`watchesValues`/`provenanceOverlay` — not yet built — so
-graph-ui degrades honestly), and the graph-ui registry entry. **Shells:** `FuncNode` + an editable
-`GraphFlowView` (seeds controlled state, wires `onConnect` through `isValidConnection`) — typecheck +
-build only, not render-tested. **Deferred:** real layout (dagre/ELK), styling, collapse↔expand of a
-sub-DAG into a reusable component, the value-watch execution overlay, provenance overlay drawing, and
-component render tests.
+graph-ui degrades honestly), and the graph-ui registry entry. **Components:** `FuncNode` + an editable
+`GraphFlowView` (seeds controlled state, re-seeds on a graph-prop change, wires `onConnect` through
+`isValidConnection`, renders an empty state for a node-less graph). Render-tested over happy-dom:
+the empty-state path, a non-empty mount-without-throw, and the re-seed-on-graph-change path (NOT the
+laid-out React Flow canvas — happy-dom has no layout). **Deferred:** real layout (dagre/ELK), styling,
+collapse↔expand of a sub-DAG into a reusable component, the value-watch execution overlay, provenance
+overlay drawing, and visual/layout assertions in a real browser.
 
 ## Status
 

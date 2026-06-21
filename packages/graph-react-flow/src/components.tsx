@@ -26,7 +26,7 @@ import {
   type NodeTypes,
   type OnConnect,
 } from '@xyflow/react';
-import { useCallback, useMemo, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, type ReactElement } from 'react';
 import type { CanonicalGraph, GraphCapabilities, ReactFlowNodeData } from '@zodal/graph-core';
 import { toReactFlow } from '@zodal/graph-core';
 import { makeIsValidConnection } from './is-valid-connection.js';
@@ -83,8 +83,15 @@ export function GraphFlowView({ graph, capabilities }: GraphFlowViewProps): Reac
     [initial],
   );
 
-  const [nodes, , onNodesChange] = useNodesState(seedNodes);
+  const [nodes, setNodes, onNodesChange] = useNodesState(seedNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(seedEdges);
+
+  // useNodesState/useEdgesState only read their arg on first mount; re-seed when the graph changes
+  // (otherwise the canvas — and the empty-state check below — go stale on a new `graph` prop).
+  useEffect(() => {
+    setNodes(seedNodes);
+    setEdges(seedEdges);
+  }, [seedNodes, seedEdges, setNodes, setEdges]);
 
   // Generated from the canonical port types; assignable to React Flow's predicate without a cast
   // because our Connection covers the Edge | Connection it passes.

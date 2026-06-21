@@ -32,12 +32,14 @@ describe('<SigmaView>', () => {
     expect(container.querySelector('.zodal-sigma-view--empty')).not.toBeNull();
   });
 
-  it('degrades to an error overlay (not a crash) where WebGL is unavailable', () => {
+  it('degrades to a stable error overlay (not a crash) when WebGL context creation fails', () => {
     let result: ReturnType<typeof render> | undefined;
     expect(() => {
       result = render(<SigmaView graph={graph()} />);
     }).not.toThrow();
-    // happy-dom can't create a WebGL context, so Sigma init fails and the component shows the overlay.
-    expect(result!.container.querySelector('.zodal-sigma-view--error')).not.toBeNull();
+    // happy-dom's canvas yields no WebGL context, so Sigma init fails and the overlay shows a stable,
+    // user-facing message (never an internal stack string like "reading 'blendFunc'").
+    const overlay = result!.container.querySelector('.zodal-sigma-view--error');
+    expect(overlay?.textContent).toContain('WebGL is unavailable');
   });
 });

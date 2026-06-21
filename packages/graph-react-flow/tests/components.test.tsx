@@ -29,4 +29,12 @@ describe('<GraphFlowView>', () => {
   it('mounts a non-empty graph without throwing', () => {
     expect(() => render(<GraphFlowView graph={portGraph()} capabilities={caps} />)).not.toThrow();
   });
+
+  it('re-seeds and shows the empty state when the graph prop changes to empty', () => {
+    const empty: CanonicalGraph = { directed: true, multigraph: false, nodes: [], edges: [], graph: {} };
+    const { container, rerender } = render(<GraphFlowView graph={portGraph()} capabilities={caps} />);
+    expect(container.querySelector('.zodal-graph-flow--empty')).toBeNull(); // non-empty first
+    rerender(<GraphFlowView graph={empty} capabilities={caps} />);
+    expect(container.querySelector('.zodal-graph-flow--empty')).not.toBeNull(); // re-seeded → empty state
+  });
 });
