@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import type { CanonicalGraph } from '@zodal/graph-core';
 import { nodeId, edgeId } from '@zodal/graph-core';
-import { toAdjacencyMatrix, seriate } from '../src/index.js';
+import { toAdjacencyMatrix, seriate, reorderMatrix } from '../src/headless.js';
 
 const path = (ids: string[], directed = true): CanonicalGraph => ({
   directed,
@@ -102,5 +102,24 @@ describe('seriate', () => {
     };
     expect(span(['a', 'b', 'c'])).toBe(2); // each clique stays a contiguous diagonal block
     expect(span(['x', 'y', 'z'])).toBe(2);
+  });
+});
+
+describe('reorderMatrix', () => {
+  it('permutes rows and columns into the given order, reindexing cells consistently', () => {
+    const g = undirectedEdges([['a', 'b'], ['b', 'c'], ['c', 'a']]);
+    const m = toAdjacencyMatrix(g);
+    const reordered = reorderMatrix(m, ['c', 'a', 'b']);
+    expect(reordered.order).toEqual(['c', 'a', 'b']);
+    // the a→b link (present in the original) must survive at the new (a,b) positions
+    const ai = reordered.order.indexOf('a');
+    const bi = reordered.order.indexOf('b');
+    expect(reordered.cells[ai][bi]).toBe(m.cells[m.order.indexOf('a')][m.order.indexOf('b')]);
+  });
+
+  it('appends ids omitted from the order at the end', () => {
+    const g = undirectedEdges([['a', 'b']]);
+    const m = toAdjacencyMatrix(g);
+    expect(reorderMatrix(m, ['b']).order).toEqual(['b', 'a']);
   });
 });

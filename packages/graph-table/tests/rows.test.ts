@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import type { CanonicalGraph } from '@zodal/graph-core';
 import { nodeId, edgeId } from '@zodal/graph-core';
-import { toNodeRows, toEdgeRows, inferColumns } from '../src/index.js';
+import { toNodeRows, toEdgeRows, inferColumns } from '../src/headless.js';
 
 const graph: CanonicalGraph = {
   directed: true,
