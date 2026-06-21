@@ -123,3 +123,20 @@ describe('reorderMatrix', () => {
     expect(reorderMatrix(m, ['b']).order).toEqual(['b', 'a']);
   });
 });
+
+describe('reorderMatrix — dedupe / non-permutation inputs', () => {
+  it('drops duplicate ids in `order`, returning a valid N×N matrix', () => {
+    const g = undirectedEdges([['a', 'b'], ['b', 'c']]);
+    const m = toAdjacencyMatrix(g);
+    const out = reorderMatrix(m, ['b', 'b', 'a']); // duplicate 'b'
+    expect(out.order).toEqual(['b', 'a', 'c']); // 'b' once, 'c' appended
+    expect(out.cells).toHaveLength(out.order.length);
+    expect(out.cells.every((r) => r.length === out.order.length)).toBe(true);
+  });
+
+  it('drops ids not in the matrix', () => {
+    const g = undirectedEdges([['a', 'b']]);
+    const m = toAdjacencyMatrix(g);
+    expect(reorderMatrix(m, ['ghost', 'b', 'a']).order).toEqual(['b', 'a']);
+  });
+});

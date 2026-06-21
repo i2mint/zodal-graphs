@@ -30,14 +30,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tanstack/react-table": "^8.20.0",
     "@zodal/graph-core": "workspace:*",
     "@zodal/graph-ui": "workspace:*"
   },
   "peerDependencies": {
+    "@tanstack/react-table": "^8.20.0",
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
+    "@tanstack/react-table": "^8.20.0",
     "@testing-library/dom": "^10.0.0",
     "@testing-library/react": "^16.0.0",
     "@types/react": "^19.0.0",

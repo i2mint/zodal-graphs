@@ -13,11 +13,12 @@ a heat-cell grid / a shadcn form.
 ## Install
 
 ```bash
-pnpm add @zodal/graph-table react
+pnpm add @zodal/graph-table react @tanstack/react-table
 ```
 
-`react` is a peer; `@tanstack/react-table` comes as a dependency; `@zodal/graph-core` + `@zodal/graph-ui`
-come transitively. Import `@zodal/graph-table/headless` for the shaping core **without** React/TanStack.
+`react` and `@tanstack/react-table` are **peers** (provide your own so React context/hooks resolve to a
+single instance); `@zodal/graph-core` + `@zodal/graph-ui` come transitively. Import
+`@zodal/graph-table/headless` for the shaping core **without** React/TanStack.
 
 ## React components
 

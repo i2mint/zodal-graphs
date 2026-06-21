@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, it, expect } from 'vitest';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, fireEvent, render } from '@testing-library/react';
 import type { CanonicalGraph } from '@zodal/graph-core';
 import { nodeId, edgeId } from '@zodal/graph-core';
 import { GraphTable, GraphMatrix } from '../src/index.js';
@@ -69,20 +69,58 @@ describe('<GraphTable>', () => {
     const { container } = render(<GraphTable graph={empty} />);
     expect(container.querySelector('.zodal-table--empty')?.textContent).toMatch(/No nodes/);
   });
+
+  it('sorts an object/mixed column transitively (keyboard-accessible button header), no crash', () => {
+    const g: CanonicalGraph = {
+      directed: true,
+      multigraph: false,
+      nodes: [
+        { id: nodeId('a'), kind: 'entity', data: { meta: { k: 1 } } },
+        { id: nodeId('b'), kind: 'entity', data: { meta: { k: 2 } } },
+        { id: nodeId('c'), kind: 'entity', data: { meta: 'plain' } },
+      ],
+      edges: [],
+      graph: {},
+    };
+    const { container } = render(<GraphTable graph={g} />);
+    const sortButton = [...container.querySelectorAll('th')]
+      .find((th) => th.textContent?.startsWith('Meta'))
+      ?.querySelector('button');
+    expect(sortButton).toBeTruthy();
+    expect(() => fireEvent.click(sortButton!)).not.toThrow(); // transitive comparator over displayed value
+    // a11y: the sorted column now reports its direction via aria-sort (asc or desc — auto direction)
+    expect(container.querySelector('th[aria-sort="ascending"], th[aria-sort="descending"]')).not.toBeNull();
+  });
 });
 
 describe('<GraphMatrix>', () => {
   it('renders an N×N grid of heat cells', () => {
     const { container } = render(<GraphMatrix graph={graph()} />);
-    expect(container.querySelectorAll('[role="gridcell"]')).toHaveLength(9); // 3×3
+    expect(container.querySelectorAll('.zodal-matrix__cell')).toHaveLength(9); // 3×3
   });
 
   it('paints linked cells (non-zero data-value) and leaves others empty', () => {
     const { container } = render(<GraphMatrix graph={graph()} seriation="none" />);
-    const painted = [...container.querySelectorAll('[role="gridcell"]')].filter(
+    const painted = [...container.querySelectorAll('.zodal-matrix__cell')].filter(
       (c) => Number(c.getAttribute('data-value')) !== 0,
     );
     expect(painted.length).toBe(2); // a→b and b→c
+  });
+
+  it('paints an all-NEGATIVE-weight graph (magnitude-saturated, not blank)', () => {
+    const g: CanonicalGraph = {
+      directed: true,
+      multigraph: false,
+      nodes: [{ id: nodeId('a'), kind: 'entity' }, { id: nodeId('b'), kind: 'entity' }],
+      edges: [{ id: edgeId('e'), source: nodeId('a'), target: nodeId('b'), data: { w: -5 } }],
+      graph: {},
+    };
+    const { container } = render(<GraphMatrix graph={g} weight="w" seriation="none" />);
+    const painted = [...container.querySelectorAll('.zodal-matrix__cell')].filter((c) => {
+      const bg = (c as HTMLElement).style.background;
+      return bg !== '' && bg !== 'transparent';
+    });
+    expect(painted.length).toBe(1); // the -5 cell is visible, not blank
   });
 
   it('shows an empty state for an empty graph', () => {

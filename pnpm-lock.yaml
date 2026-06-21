@@ -178,9 +178,6 @@ importers:
 
   packages/graph-table:
     dependencies:
-      '@tanstack/react-table':
-        specifier: ^8.20.0
-        version: 8.21.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@zodal/graph-core':
         specifier: workspace:*
         version: link:../graph-core
@@ -188,6 +185,9 @@ importers:
         specifier: workspace:*
         version: link:../graph-ui
     devDependencies:
+      '@tanstack/react-table':
+        specifier: ^8.20.0
+        version: 8.21.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@testing-library/dom':
         specifier: ^10.0.0
         version: 10.4.1
