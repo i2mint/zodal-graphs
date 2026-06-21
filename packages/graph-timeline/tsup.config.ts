@@ -6,5 +6,5 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: true,
-  external: ['react', 'react-dom', '@visx/scale'],
+  external: ['react', 'react-dom', '@visx/scale', '@visx/axis', '@visx/brush', '@visx/group'],
 });
