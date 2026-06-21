@@ -8,10 +8,20 @@ import { afterEach, describe, it, expect } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import type { CanonicalGraph } from '@zodal/graph-core';
 import { nodeId } from '@zodal/graph-core';
-import { TimelineView } from '../src/index.js';
-import { interval } from '../src/headless.js';
+import { TimelineView, boundsToWindow } from '../src/index.js';
+import { interval, toNumber } from '../src/headless.js';
 
 afterEach(cleanup);
+
+describe('boundsToWindow (brush → rational-time window)', () => {
+  it('converts ordered/unordered bounds to an interval, null when cleared', () => {
+    const w = boundsToWindow({ x0: 2, x1: 7, y0: 0, y1: 1 } as never)!;
+    expect([toNumber(w.start), toNumber(w.end)]).toEqual([2, 7]);
+    const flipped = boundsToWindow({ x0: 7, x1: 2, y0: 0, y1: 1 } as never)!; // visx orders, but be safe
+    expect([toNumber(flipped.start), toNumber(flipped.end)]).toEqual([2, 7]);
+    expect(boundsToWindow(null)).toBeNull();
+  });
+});
 
 function annotated(): CanonicalGraph {
   return {

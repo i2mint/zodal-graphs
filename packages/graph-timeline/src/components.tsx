@@ -3,8 +3,14 @@
  *
  * Tiers become labelled horizontal lanes (`scaleBand`); annotations become time-positioned rects
  * (`scaleLinear`); `@visx/axis` draws the time axis and `@visx/brush` provides a draggable window
- * selection that reports back as a rational-time {@link Interval} via `onWindowChange`. The optional
- * controlled `window` highlights intersecting annotations. Presentational + themeable via class names.
+ * selection that reports back as a rational-time {@link Interval} via `onWindowChange`.
+ *
+ * The brush rectangle and the controlled `window` prop are INDEPENDENT visuals: `window` is a
+ * read-only highlight (intersecting annotations get `--in-window`); the brush keeps its own internal
+ * selection and only *reports* via `onWindowChange`. Setting `window` does not move the brush. Also
+ * note visx pads a brushed window by ~2px-of-data on each edge (its deliberate "tolerant delta"), so
+ * the reported {@link Interval} is slightly wider than the literal pixels dragged. Presentational +
+ * themeable via class names.
  */
 
 import { AxisBottom } from '@visx/axis';
@@ -27,11 +33,22 @@ export interface TimelineMargin {
 
 const DEFAULT_MARGIN: TimelineMargin = { top: 8, right: 12, bottom: 28, left: 120 };
 
+/**
+ * Convert a visx brush {@link Bounds} (already in the xScale data domain, and SAFE_PIXEL-padded by
+ * visx) to a rational-time window; `null` for a cleared/empty brush. Exported so the conversion is
+ * unit-testable without a layout engine (happy-dom can't drag the brush).
+ */
+export function boundsToWindow(bounds: Bounds | null): Interval | null {
+  if (!bounds) return null;
+  // visx's getDomainFromExtent already returns x0=min, x1=max; min/max here is cheap insurance.
+  return interval(Math.min(bounds.x0, bounds.x1), Math.max(bounds.x0, bounds.x1));
+}
+
 export interface TimelineViewProps {
   graph: CanonicalGraph;
-  /** Controlled brushed window — annotations intersecting it are marked `--in-window`. */
+  /** Read-only highlight window — intersecting annotations are marked `--in-window` (independent of the brush). */
   window?: Interval;
-  /** Fired when the user brushes a time window (null when the brush is cleared). */
+  /** Fired when the user brushes a time window (null when cleared). The window is visx-padded (~2px). */
   onWindowChange?: (window: Interval | null) => void;
   width?: number;
   height?: number;
@@ -53,6 +70,7 @@ export function TimelineView({
 
   const xScale = useMemo(() => {
     const extent = timelineExtent(model);
+    // toNumber is intentionally lossy (v/r → float): this drives PIXELS only; intersection math stays rational.
     const lo = extent ? toNumber(extent.start) : 0;
     const hi = extent ? toNumber(extent.end) : 1;
     // Pad a zero-width extent so single-instant timelines don't collapse onto a sliver.
@@ -66,42 +84,44 @@ export function TimelineView({
   );
   const laneHeight = yScale.bandwidth();
 
-  const handleBrush = (bounds: Bounds | null): void => {
-    if (!onWindowChange) return;
-    if (!bounds) return onWindowChange(null);
-    const lo = Math.min(bounds.x0, bounds.x1);
-    const hi = Math.max(bounds.x0, bounds.x1);
-    onWindowChange(interval(lo, hi));
-  };
+  const handleBrush = onWindowChange ? (bounds: Bounds | null) => onWindowChange(boundsToWindow(bounds)) : undefined;
 
   if (model.tiers.length === 0) {
     return <div className="zodal-timeline zodal-timeline--empty">No annotated intervals to show.</div>;
   }
 
   return (
-    <svg className="zodal-timeline" width={width} height={height}>
-      {/* Tier labels in the left gutter */}
-      {model.tiers.map((tier) => {
-        const y = (yScale(tier.id) ?? 0) + margin.top;
-        return (
+    <svg
+      className="zodal-timeline"
+      width={width}
+      height={height}
+      role="img"
+      aria-label={`timeline, ${model.tiers.length} tiers, ${model.annotations.length} intervals`}
+    >
+      <title>{`Interval timeline — ${model.tiers.length} tiers, ${model.annotations.length} annotations`}</title>
+
+      {/* Tier labels in the left gutter (own Group so they share the rects' vertical origin) */}
+      <Group top={margin.top}>
+        {model.tiers.map((tier) => (
           <text
             key={tier.id}
             className="zodal-timeline__tier-label"
             x={8}
-            y={y + laneHeight / 2}
+            y={(yScale(tier.id) ?? 0) + laneHeight / 2}
             dominantBaseline="middle"
             fontSize={12}
           >
             {tier.id}
           </text>
-        );
-      })}
+        ))}
+      </Group>
 
       <Group left={margin.left} top={margin.top}>
         {model.annotations.map((a) => {
+          const y = yScale(a.tier);
+          if (y === undefined) return null; // annotation on a tier not in the band domain — skip, don't stack on lane 0
           const x = xScale(toNumber(a.interval.start));
           const w = Math.max(1, xScale(toNumber(a.interval.end)) - x);
-          const y = yScale(a.tier) ?? 0;
           const inWindow = window ? intersects(a.interval, window) : false;
           return (
             <rect
@@ -112,13 +132,15 @@ export function TimelineView({
               width={w}
               height={laneHeight}
               rx={2}
-            />
+            >
+              <title>{`${a.tier}: [${toNumber(a.interval.start)}, ${toNumber(a.interval.end)})`}</title>
+            </rect>
           );
         })}
 
         <AxisBottom top={innerHeight} scale={xScale} numTicks={6} />
 
-        {onWindowChange ? (
+        {handleBrush ? (
           <Brush
             xScale={xScale}
             yScale={yScale}
@@ -126,7 +148,6 @@ export function TimelineView({
             height={Math.max(1, innerHeight)}
             brushDirection="horizontal"
             onChange={handleBrush}
-            onClick={() => onWindowChange(null)}
           />
         ) : null}
       </Group>

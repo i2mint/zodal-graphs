@@ -218,15 +218,6 @@ importers:
 
   packages/graph-timeline:
     dependencies:
-      '@visx/axis':
-        specifier: ^4.0.0
-        version: 4.0.0(@types/react@19.2.17)(react@19.2.7)
-      '@visx/brush':
-        specifier: ^4.0.0
-        version: 4.0.0(@types/react@19.2.17)(react@19.2.7)
-      '@visx/group':
-        specifier: ^4.0.0
-        version: 4.0.0(@types/react@19.2.17)(react@19.2.7)
       '@zodal/graph-core':
         specifier: workspace:*
         version: link:../graph-core
@@ -243,6 +234,15 @@ importers:
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.17
+      '@visx/axis':
+        specifier: ^4.0.0
+        version: 4.0.0(@types/react@19.2.17)(react@19.2.7)
+      '@visx/brush':
+        specifier: ^4.0.0
+        version: 4.0.0(@types/react@19.2.17)(react@19.2.7)
+      '@visx/group':
+        specifier: ^4.0.0
+        version: 4.0.0(@types/react@19.2.17)(react@19.2.7)
       '@visx/scale':
         specifier: ^4.0.0
         version: 4.0.0

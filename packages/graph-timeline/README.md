@@ -11,7 +11,7 @@ relation algebra + ELAN tier stereotypes — with a thin visx shell on top.
 ## Install
 
 ```bash
-pnpm add @zodal/graph-timeline @visx/scale react
+pnpm add @zodal/graph-timeline @visx/scale @visx/axis @visx/brush @visx/group react
 ```
 
 `@zodal/graph-core` and `@zodal/graph-ui` come transitively; `@visx/scale` and `react` are peers.
@@ -53,7 +53,7 @@ import { TimelineView } from '@zodal/graph-timeline';
 Tiers become **labelled lanes** (`scaleBand`), annotations become time-positioned rects
 (`scaleLinear`), `@visx/axis` draws the **time axis**, and `@visx/brush` provides a draggable window
 that reports back as a rational-time `Interval` via `onWindowChange`. Install the visx peers:
-`pnpm add @zodal/graph-timeline @visx/scale react`.
+`pnpm add @zodal/graph-timeline @visx/scale @visx/axis @visx/brush @visx/group react`.
 
 ## Scope
 
@@ -62,10 +62,13 @@ that reports back as a rational-time `Interval` via `onWindowChange`. Install th
 `disjoint`), the five ELAN tier stereotypes + containment/disjointness validation, timeline data
 shaping + window / relation queries + extent, and the OVERRIDE registry entry. **React `TimelineView`:**
 labelled tier lanes, the `@visx/axis` time axis, and the interactive `@visx/brush` window selection
-(render-tested over happy-dom). **Deferred:** `time-subdivision` **coverage** (gapless partition)
-validation — only containment + disjointness are checked; brush zoom/resize handles + tier collapse;
-large-dataset interval-tree indexing (currently a linear scan); BigInt cross-multiplication for times
-beyond the 2^53 safe-integer domain; and Allen-relation composition.
+(render-tested over happy-dom; the brush→window conversion is unit-tested). The brush is mouse-drag
+only and reports a visx-padded (~2px) window; `window` is an independent read-only highlight.
+**Deferred:** `time-subdivision` **coverage** (gapless partition) validation — only containment +
+disjointness are checked; brush **keyboard** access + zoom/resize handles + a controlled
+(`window`-driven) brush position + tier collapse; large-dataset interval-tree indexing (currently a
+linear scan); BigInt cross-multiplication for times beyond the 2^53 safe-integer domain; and
+Allen-relation composition.
 
 ## Status
 
