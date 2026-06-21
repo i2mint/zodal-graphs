@@ -8,7 +8,8 @@
  * `targetHandle === targetPort`).
  *
  * Consumers must import `@xyflow/react/dist/style.css` (or supply their own) AND give the view a
- * parent with a definite height — React Flow renders into its parent's box.
+ * parent with a definite height — React Flow renders into its parent's box. A graph with no nodes
+ * renders an empty state instead of an empty canvas.
  */
 
 import {
@@ -92,6 +93,14 @@ export function GraphFlowView({ graph, capabilities }: GraphFlowViewProps): Reac
     [graph, capabilities],
   );
   const onConnect = useCallback<OnConnect>((connection) => setEdges((eds) => addEdge(connection, eds)), [setEdges]);
+
+  if (nodes.length === 0) {
+    return (
+      <div className="zodal-graph-flow zodal-graph-flow--empty" style={{ width: '100%', height: '100%' }}>
+        No nodes to display.
+      </div>
+    );
+  }
 
   return (
     <div className="zodal-graph-flow" style={{ width: '100%', height: '100%' }}>

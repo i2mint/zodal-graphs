@@ -39,10 +39,15 @@
     "sigma": "^3.0.0"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.0.0",
+    "@testing-library/react": "^16.0.0",
     "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "graphology": "^0.26.0",
     "graphology-types": "^0.24.0",
+    "happy-dom": "^15.0.0",
     "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "sigma": "^3.0.3",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
