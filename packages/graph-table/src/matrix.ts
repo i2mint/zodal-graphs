@@ -59,6 +59,29 @@ export function seriate(matrix: AdjacencyMatrix, method: SeriationMethod = 'cuth
   return cuthillMckee(matrix, degrees).map((i) => matrix.order[i]);
 }
 
+/**
+ * Permute a matrix's rows AND columns into the given node order (typically a {@link seriate} result),
+ * so `cells` is reindexed consistently. The result is always a valid permutation: ids not in the
+ * matrix and DUPLICATE ids in `order` are dropped (each node appears once); ids omitted from `order`
+ * are appended in their original position. Returns a new matrix (the input is untouched).
+ */
+export function reorderMatrix(matrix: AdjacencyMatrix, order: readonly string[]): AdjacencyMatrix {
+  const original = new Map(matrix.order.map((id, i) => [id, i]));
+  const seen = new Set<number>();
+  const indices: number[] = [];
+  for (const id of order) {
+    const i = original.get(id);
+    if (i !== undefined && !seen.has(i)) {
+      seen.add(i);
+      indices.push(i);
+    }
+  }
+  for (let i = 0; i < matrix.order.length; i++) if (!seen.has(i)) indices.push(i); // append any omitted, once
+  const newOrder = indices.map((i) => matrix.order[i]);
+  const cells = indices.map((i) => indices.map((j) => matrix.cells[i][j]));
+  return { order: newOrder, cells };
+}
+
 // === internals ============================================================
 
 /** Adjacency by edge EXISTENCE (`cell !== 0`), so zero/negative-weighted real edges still count. */

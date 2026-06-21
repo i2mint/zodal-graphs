@@ -1,7 +1,7 @@
 {
   "name": "@zodal/graph-table",
   "version": "0.0.1",
-  "description": "Table / matrix / form lenses for zodal-graphs — renderer-agnostic data shaping + view switching",
+  "description": "Table / matrix / form lenses for zodal-graphs — data shaping + TanStack table + heat-cell matrix",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -10,6 +10,10 @@
     ".": {
       "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
       "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
+    },
+    "./headless": {
+      "import": { "types": "./dist/headless.d.ts", "default": "./dist/headless.js" },
+      "require": { "types": "./dist/headless.d.cts", "default": "./dist/headless.cjs" }
     }
   },
   "sideEffects": false,
@@ -29,7 +33,18 @@
     "@zodal/graph-core": "workspace:*",
     "@zodal/graph-ui": "workspace:*"
   },
+  "peerDependencies": {
+    "@tanstack/react-table": "^8.20.0",
+    "react": "^18.0.0 || ^19.0.0"
+  },
   "devDependencies": {
+    "@tanstack/react-table": "^8.20.0",
+    "@testing-library/dom": "^10.0.0",
+    "@testing-library/react": "^16.0.0",
+    "@types/react": "^19.0.0",
+    "happy-dom": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

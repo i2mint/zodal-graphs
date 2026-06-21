@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveGraphCapabilities } from '@zodal/graph-core';
 import { createGraphRendererRegistry } from '@zodal/graph-ui';
-import { createTableRendererEntry, createMatrixRendererEntry } from '../src/index.js';
+import { createTableRendererEntry, createMatrixRendererEntry } from '../src/headless.js';
 
 const caps = resolveGraphCapabilities({ views: ['node-link', 'table', 'matrix'] });
 

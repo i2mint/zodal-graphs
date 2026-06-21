@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { resolveGraphCapabilities } from '@zodal/graph-core';
-import { availableViews, initViewState, switchView, switchViewChecked, canSwitchTo } from '../src/index.js';
+import { availableViews, initViewState, switchView, switchViewChecked, canSwitchTo } from '../src/headless.js';
 
 const caps = resolveGraphCapabilities({ views: ['node-link', 'table', 'matrix'] });
 
