@@ -8,7 +8,8 @@
  * `targetHandle === targetPort`).
  *
  * Consumers must import `@xyflow/react/dist/style.css` (or supply their own) AND give the view a
- * parent with a definite height — React Flow renders into its parent's box.
+ * parent with a definite height — React Flow renders into its parent's box. A graph with no nodes
+ * renders an empty state instead of an empty canvas.
  */
 
 import {
@@ -25,7 +26,7 @@ import {
   type NodeTypes,
   type OnConnect,
 } from '@xyflow/react';
-import { useCallback, useMemo, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, type ReactElement } from 'react';
 import type { CanonicalGraph, GraphCapabilities, ReactFlowNodeData } from '@zodal/graph-core';
 import { toReactFlow } from '@zodal/graph-core';
 import { makeIsValidConnection } from './is-valid-connection.js';
@@ -82,8 +83,15 @@ export function GraphFlowView({ graph, capabilities }: GraphFlowViewProps): Reac
     [initial],
   );
 
-  const [nodes, , onNodesChange] = useNodesState(seedNodes);
+  const [nodes, setNodes, onNodesChange] = useNodesState(seedNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(seedEdges);
+
+  // useNodesState/useEdgesState only read their arg on first mount; re-seed when the graph changes
+  // (otherwise the canvas — and the empty-state check below — go stale on a new `graph` prop).
+  useEffect(() => {
+    setNodes(seedNodes);
+    setEdges(seedEdges);
+  }, [seedNodes, seedEdges, setNodes, setEdges]);
 
   // Generated from the canonical port types; assignable to React Flow's predicate without a cast
   // because our Connection covers the Edge | Connection it passes.
@@ -92,6 +100,14 @@ export function GraphFlowView({ graph, capabilities }: GraphFlowViewProps): Reac
     [graph, capabilities],
   );
   const onConnect = useCallback<OnConnect>((connection) => setEdges((eds) => addEdge(connection, eds)), [setEdges]);
+
+  if (nodes.length === 0) {
+    return (
+      <div className="zodal-graph-flow zodal-graph-flow--empty" style={{ width: '100%', height: '100%' }}>
+        No nodes to display.
+      </div>
+    );
+  }
 
   return (
     <div className="zodal-graph-flow" style={{ width: '100%', height: '100%' }}>

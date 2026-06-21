@@ -8,11 +8,14 @@
  * (a real layout pass — ForceAtlas2 / noverlap — is deferred).
  *
  * Give the view a parent with a definite height (sigma renders into its parent's box); the component
- * warns if the container has zero size at construction.
+ * warns if the container has zero size at construction. An empty graph shows an empty state (no Sigma
+ * init); when Sigma fails to initialise (e.g. a browser/container with no usable WebGL context) it
+ * degrades to an error overlay rather than throwing. (This is a client-only component — `sigma`
+ * references WebGL globals at import, so don't import it in a non-DOM server runtime.)
  */
 
 import Sigma from 'sigma';
-import { useEffect, useRef, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { CanonicalGraph, GraphOverlays } from '@zodal/graph-core';
 import { toGraphology } from '@zodal/graph-core/graphology';
 import { edgeOverlayStyle, nodeOverlayStyle, type OverlayStyleOptions } from './overlay-style.js';
@@ -27,11 +30,14 @@ export interface SigmaViewProps {
 export function SigmaView({ graph, overlays, styleOptions }: SigmaViewProps): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const sigmaRef = useRef<Sigma | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const isEmpty = graph.nodes.length === 0;
 
   // Create the Sigma instance ONCE per graph — overlay changes must not reset the camera.
   useEffect(() => {
+    setError(null);
     const container = containerRef.current;
-    if (!container) return;
+    if (!container || isEmpty) return; // nothing to render (no DOM target / empty graph)
     if (container.clientWidth === 0 || container.clientHeight === 0) {
       console.warn('SigmaView: the container has zero size — give it a parent with a definite height.');
     }
@@ -55,15 +61,28 @@ export function SigmaView({ graph, overlays, styleOptions }: SigmaViewProps): Re
       i += 1;
     });
 
-    const renderer = new Sigma(g, container);
+    let renderer: Sigma;
+    try {
+      // Throws when WebGL CONTEXT creation fails (headless browser / happy-dom — getContext yields
+      // null). NB: a true non-DOM runtime throws earlier, at sigma's import (see the module docstring).
+      renderer = new Sigma(g, container);
+    } catch (cause) {
+      // Normalize sigma's internal error (often a null-deref) into a stable, user-facing message —
+      // never leak an internal stack string. The raw cause is logged for debugging.
+      console.warn('SigmaView: Sigma failed to initialise:', cause);
+      setError('WebGL is unavailable in this environment.');
+      return;
+    }
     sigmaRef.current = renderer;
     return () => {
       renderer.kill();
       sigmaRef.current = null;
     };
-  }, [graph]);
+  }, [graph, isEmpty]);
 
-  // Apply overlays/styling on the EXISTING instance (no rebuild → camera preserved).
+  // Apply overlays/styling on the EXISTING instance (no rebuild → camera preserved). NB: pass
+  // referentially-stable `overlays`/`styleOptions` (memoize them) — a new identity each render
+  // re-runs setSetting+refresh; a mutated-in-place object won't re-run at all.
   useEffect(() => {
     const renderer = sigmaRef.current;
     if (!renderer) return;
@@ -74,5 +93,11 @@ export function SigmaView({ graph, overlays, styleOptions }: SigmaViewProps): Re
     renderer.refresh();
   }, [overlays, styleOptions]);
 
-  return <div className="zodal-sigma-view" ref={containerRef} style={{ width: '100%', height: '100%' }} />;
+  return (
+    <div className="zodal-sigma-view" style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      {isEmpty ? <div className="zodal-sigma-view--empty">Empty graph.</div> : null}
+      {error && !isEmpty ? <div className="zodal-sigma-view--error">Cannot render: {error}</div> : null}
+    </div>
+  );
 }
