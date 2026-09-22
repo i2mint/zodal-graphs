@@ -2,11 +2,29 @@
 
 > A declarative layer where graph *affordances* are expressed once and mapped — in many ways, against many targets — to UIs, storage, and graph databases. The graph specialization of `zodal`.
 
-This repository holds the **research, design, and development-planning phase** for
-zodal-graph — there is no package code yet. The research chose and designed the modern,
-well-maintained tooling for a Zod-v4 schema-driven, renderer-agnostic graph-UI facade, with
-a strong bias toward reusing existing libraries rather than building from scratch. The
-planning layer turns that research into an executable, AI-agent-driven build plan.
+This repository started as the **research, design, and development-planning phase** for
+zodal-graph. That phase chose and designed the modern, well-maintained tooling for a Zod-v4
+schema-driven, renderer-agnostic graph-UI facade, with a strong bias toward reusing existing
+libraries rather than building from scratch, and the planning layer turned that research into
+an executable, AI-agent-driven build plan.
+
+**The build itself has since shipped.** Nine `@zodal/graph-*` packages are built, tested, and
+published to npm at `0.1.0`:
+
+| Package | What it is |
+|---|---|
+| [`@zodal/graph-core`](packages/graph-core) | Canonical graph data model, capabilities vocabulary, serializer, pure adapters, `defineGraph` |
+| [`@zodal/graph-ui`](packages/graph-ui) | Schema↔render mapping registries with capability-ranked, rank-and-degrade renderer selection |
+| [`@zodal/graph-layout`](packages/graph-layout) | Renderer-agnostic layout engine (layered-by-rank, radial/ego, swimlane, circular) |
+| [`@zodal/graph-runtime`](packages/graph-runtime) | In-browser dataflow execution engine for func graphs (topo run, step, incremental recompute) |
+| [`@zodal/graph-compute`](packages/graph-compute) | Renderer-agnostic graph-theory and provenance overlay engine (computed once on the graphology hub) |
+| [`@zodal/graph-sigma`](packages/graph-sigma) | Large-sparse WebGL viz renderer (sigma.js over the graphology hub) |
+| [`@zodal/graph-react-flow`](packages/graph-react-flow) | React Flow typed-port editor renderer (connection validation driven by canonical port types) |
+| [`@zodal/graph-table`](packages/graph-table) | Table / matrix / form lenses — data shaping + TanStack table + heat-cell matrix |
+| [`@zodal/graph-timeline`](packages/graph-timeline) | ELAN-style interval-tier timeline — rational time, half-open intervals, Allen's 13 relations |
+
+See [`docs/dev-plan.md`](docs/dev-plan.md) for what's built vs. planned per horizon, and the
+[issues](../../issues) for what's next (e.g. cross-lens brushing/selection, #30).
 
 ## Contents
 
