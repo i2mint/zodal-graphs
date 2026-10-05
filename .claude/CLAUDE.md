@@ -1,8 +1,10 @@
 # zodal-graphs — Agent Dev Guide
 
-> **Stage:** design complete, **pre-implementation**. The repo currently holds research +
-> design + this toolkit. No package code yet. The first build checkpoint is the **canonical
-> data model (P4)**. See [`docs/dev-plan.md`](../docs/dev-plan.md) for the phased plan.
+> **Stage:** **built, not yet on npm.** 9 `@zodal/graph-*` packages on `main` (graph-core,
+> graph-ui, graph-compute, graph-runtime, graph-layout, graph-table, graph-timeline,
+> graph-react-flow, graph-sigma), composing end-to-end (`tests/integration/`), all at 0.1.0;
+> the 0.1.0 publish never reached the registry. `graph-core` peers `@zodal/core ^0.2.1`.
+> See [`docs/dev-plan.md`](../docs/dev-plan.md) for status and the phased plan.
 
 This file is the **index/map** for agents developing zodal-graphs — it routes you to the
 skill or doc you need. It is *not* the content store: behavioral rules live here and in
