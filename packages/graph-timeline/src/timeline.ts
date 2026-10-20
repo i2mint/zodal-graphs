@@ -21,6 +21,10 @@ import { TIER_STEREOTYPES, type Annotation, type Tier, type TierStereotype } fro
 export interface TimelineModel {
   tiers: Tier[];
   annotations: Annotation[];
+  /** `true` when every annotation's `start`/`end` in the source graph was a plain number (none was
+   *  a `{ v, r }` rational). `toTimeline` sets it; it lets a brush emit numeric range predicates over
+   *  `data.start`/`data.end` instead of an id snapshot. Absent means "unknown" (treated as `false`). */
+  numericTimes?: boolean;
 }
 
 interface AnnotationData {
@@ -36,11 +40,13 @@ interface AnnotationData {
 export function toTimeline(graph: CanonicalGraph): TimelineModel {
   const annotations: Annotation[] = [];
   const tierMeta = new Map<string, { stereotype: TierStereotype; parent?: string }>();
+  let numericTimes = true;
 
   for (const node of graph.nodes) {
     const data = (node.data ?? {}) as AnnotationData;
     if (data.tier == null || data.start == null || data.end == null) continue;
     const tier = String(data.tier);
+    if (typeof data.start !== 'number' || typeof data.end !== 'number') numericTimes = false;
     annotations.push({
       id: node.id,
       tier,
@@ -56,7 +62,7 @@ export function toTimeline(graph: CanonicalGraph): TimelineModel {
   }
 
   const tiers: Tier[] = [...tierMeta].map(([id, meta]) => ({ id, stereotype: meta.stereotype, parent: meta.parent }));
-  return { tiers, annotations };
+  return { tiers, annotations, numericTimes };
 }
 
 /** Annotations overlapping a time window (brushing). */
