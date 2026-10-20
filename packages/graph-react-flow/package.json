@@ -1,6 +1,7 @@
 {
   "name": "@zodal/graph-react-flow",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "React Flow typed-port editor renderer for zodal-graphs (connection validation driven by the canonical port types)",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -33,7 +34,8 @@
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
   "scripts": {
     "build": "tsup",

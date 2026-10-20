@@ -1,6 +1,7 @@
 {
   "name": "@zodal/graph-timeline",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "Bespoke ELAN-style interval-tier timeline for zodal-graphs — rational time, half-open intervals, Allen's 13 relations",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -33,7 +34,8 @@
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
   "scripts": {
     "build": "tsup",

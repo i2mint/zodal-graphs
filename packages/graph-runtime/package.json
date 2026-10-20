@@ -1,6 +1,7 @@
 {
   "name": "@zodal/graph-runtime",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "In-browser dataflow execution engine for zodal-graphs func graphs (topo run, step, incremental recompute)",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -22,7 +23,8 @@
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
   "scripts": {
     "build": "tsup",
