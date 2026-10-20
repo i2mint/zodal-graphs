@@ -60,7 +60,10 @@ store writes the brushed window as `brushFilter(model, window)` under the `'time
 (`filterOwner` / `brushOptions` to change), so every other lens fades or hides what falls outside it;
 clearing the brush removes the filter, and removing it elsewhere clears the brush. The timeline
 draws the shared selection (outlined), hover, and the OTHER owners' filters (its own window is shown
-by the brush, not by dimming itself).
+by the brush, not by dimming itself). With plain numeric times the filter is a pair of
+`data.start`/`data.end` range predicates (small, and still right after the graph gains nodes); with
+Allen `relations` or `{ v, r }` times it is an `id in [...]` snapshot (`brushOptions.form: 'ids'`
+forces the snapshot).
 
 ## Scope
 

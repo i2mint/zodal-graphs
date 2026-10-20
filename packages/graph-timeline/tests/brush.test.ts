@@ -45,3 +45,61 @@ describe('brushFilter', () => {
     expect(JSON.parse(JSON.stringify(filter))).toEqual(filter);
   });
 });
+
+describe('brushFilter range form (plain numeric times)', () => {
+  const rangeOf = (g: CanonicalGraph, w: ReturnType<typeof interval>, options = {}) =>
+    applyFilter(g, brushFilter(toTimeline(g), w, options)).selection.nodes.sort();
+  const idsOf = (g: CanonicalGraph, w: ReturnType<typeof interval>, options = {}) =>
+    applyFilter(g, brushFilter(toTimeline(g), w, { ...options, form: 'ids' })).selection.nodes.sort();
+
+  it('emits data.start/data.end predicates, not an id list', () => {
+    const json = JSON.stringify(brushFilter(model, interval(1, 4)));
+    expect(json).toContain('data.start');
+    expect(json).not.toContain('"op":"in"');
+    expect(JSON.stringify(brushFilter(model, interval(1, 4), { form: 'ids' }))).toContain('"op":"in"');
+  });
+
+  it('matches the id snapshot on half-open boundaries and instants', () => {
+    const edges = {
+      ...graph,
+      nodes: [
+        ...graph.nodes,
+        { id: 'ends-at-1', kind: 'entity', data: { tier: 't', start: 0, end: 1 } },
+        { id: 'starts-at-4', kind: 'entity', data: { tier: 't', start: 4, end: 6 } },
+        { id: 'instant-1', kind: 'entity', data: { tier: 't', start: 1, end: 1 } },
+        { id: 'instant-4', kind: 'entity', data: { tier: 't', start: 4, end: 4 } },
+        { id: 'instant-2', kind: 'entity', data: { tier: 't', start: 2, end: 2 } },
+        { id: 'no-tier', kind: 'entity', data: { start: 2, end: 3 } },
+      ],
+    } as CanonicalGraph;
+    for (const w of [interval(1, 4), interval(2, 2), interval(4, 4), interval(-1, 20)]) {
+      for (const keepUntimed of [true, false]) {
+        expect(rangeOf(edges, w, { keepUntimed })).toEqual(idsOf(edges, w, { keepUntimed }));
+      }
+    }
+    expect(rangeOf(edges, interval(1, 4), { keepUntimed: false })).toEqual(['early', 'instant-1', 'instant-2', 'mid']);
+  });
+
+  it('stays correct when the graph gains nodes', () => {
+    const filter = brushFilter(model, interval(1, 4), { keepUntimed: false });
+    const grown = {
+      ...graph,
+      nodes: [...graph.nodes, { id: 'new', kind: 'entity', data: { tier: 'words', start: 2, end: 3 } }],
+    } as CanonicalGraph;
+    expect(applyFilter(grown, filter).selection.nodes.sort()).toEqual(['early', 'mid', 'new']);
+  });
+
+  it('falls back to the id snapshot for relations and rational times', () => {
+    expect(JSON.stringify(brushFilter(model, interval(1, 6), { relations: WITHIN }))).toContain('"op":"in"');
+    const rational = {
+      ...graph,
+      nodes: [{ id: 'r', kind: 'entity', data: { tier: 'w', start: { v: 1, r: 2 }, end: 3 } }],
+    } as CanonicalGraph;
+    const rm = toTimeline(rational);
+    expect(rm.numericTimes).toBe(false);
+    const filter = brushFilter(rm, interval(0, 1));
+    expect(JSON.stringify(filter)).toContain('"op":"in"');
+    expect(applyFilter(rational, filter).selection.nodes).toEqual(['r']);
+    expect(JSON.stringify(brushFilter(model, interval({ v: 1, r: 2 }, 4)))).toContain('"op":"in"');
+  });
+});
