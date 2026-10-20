@@ -12,3 +12,4 @@ export * from './matrix.js';
 export * from './views.js';
 export * from './capabilities.js';
 export * from './selection.js';
+export * from './matrix-selection.js';
