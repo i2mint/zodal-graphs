@@ -17,7 +17,14 @@ import type { AdjacencyMatrix } from './matrix.js';
 export type MatrixTarget =
   | { kind: 'row'; node: string }
   | { kind: 'column'; node: string }
-  | { kind: 'cell'; source: string; target: string };
+  | {
+      kind: 'cell';
+      source: string;
+      target: string;
+      /** Whether this cell stands for both directions — set by `<GraphMatrix>` to the value it built
+       *  the matrix with, so the selection matches the cell's highlight. Overrides the option. */
+      undirected?: boolean;
+    };
 
 export interface MatrixSelectionOptions {
   /** Whether a cell also stands for edges in the reverse direction. Defaults to `!graph.directed`,
@@ -31,15 +38,17 @@ function inCell(edge: { source: string; target: string }, source: string, target
 }
 
 /** The selection a matrix hit makes: a band selects its node; a cell selects every edge it
- *  aggregates (none, for an empty cell). Both sides are set, so the selection is exactly what was hit;
- *  for an additive (shift-click) pick, union it with the current selection in the host. */
+ *  aggregates. Both sides are set, so the selection is exactly what was hit — an EMPTY cell therefore
+ *  yields an empty selection, which clears it. (The table's `rowSelectionToSelection` returns only its
+ *  own side, because a table lists one kind; a matrix hit picks a kind.) For an additive (shift-click)
+ *  pick, union it with the current selection in the host. */
 export function matrixTargetToSelection(
   graph: CanonicalGraph,
   target: MatrixTarget,
   options: MatrixSelectionOptions = {},
 ): GraphSelection {
   if (target.kind !== 'cell') return { nodes: [target.node], edges: [] };
-  const undirected = options.undirected ?? !graph.directed;
+  const undirected = target.undirected ?? options.undirected ?? !graph.directed;
   const edges = graph.edges.filter((e) => inCell(e, target.source, target.target, undirected)).map((e) => e.id as string);
   return { nodes: [], edges };
 }

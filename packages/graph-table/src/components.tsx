@@ -21,12 +21,11 @@ import {
   type Row as TableRow,
   type SortingState,
 } from '@tanstack/react-table';
-import { useMemo, useState, type ReactElement } from 'react';
+import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactElement } from 'react';
 import type { CanonicalGraph, GraphSelection } from '@zodal/graph-core';
 import { inferColumns, toEdgeRows, toNodeRows, type EdgeRow, type NodeRow } from './rows.js';
 import { reorderMatrix, seriate, toAdjacencyMatrix, type SeriationMethod } from './matrix.js';
 import { matrixHighlight, type MatrixTarget } from './matrix-selection.js';
-import type { MouseEvent as ReactMouseEvent } from 'react';
 
 type Row = NodeRow | EdgeRow;
 const SORT_GLYPH: Record<string, string> = { asc: ' ▲', desc: ' ▼' };
@@ -130,7 +129,7 @@ export interface GraphMatrixProps {
   selection?: GraphSelection;
   /** Called with what was clicked: a cell, or (with `labels`) a row/column band. Translate it with
    *  `matrixTargetToSelection` and write it to the shared view store. */
-  onSelect?: (target: MatrixTarget, event: ReactMouseEvent) => void;
+  onSelect?: (target: MatrixTarget, event: ReactMouseEvent | ReactKeyboardEvent) => void;
   /** Render row and column header bands (node ids) — buttons when `onSelect` is given. Default false. */
   labels?: boolean;
 }
@@ -177,24 +176,44 @@ export function GraphMatrix({
   }
 
   const n = matrix.order.length;
+  // The value the matrix was built with: a cell hit carries it, so its selection matches its highlight.
+  const bothWays = undirected ?? !graph.directed;
+  const arrow = bothWays ? '—' : '→';
   const band = (kind: 'row' | 'column', node: string, i: number): ReactElement => {
-    const className = cx(
+    const bandClass = cx(
       'zodal-matrix__band',
       `zodal-matrix__band--${kind}`,
       highlight?.bands[i] ? 'zodal-matrix__band--selected' : undefined,
     );
-    // A column band is one cell wide, so its label runs vertically.
-    const style = kind === 'column' ? { writingMode: 'vertical-rl' as const, width: cellSize } : undefined;
+    // A band is one cell thick (a column band's label runs vertically), so the grid stays square.
+    const style =
+      kind === 'column'
+        ? { writingMode: 'vertical-rl' as const, width: cellSize, padding: 0, boxSizing: 'border-box' as const }
+        : { height: cellSize, padding: '0 4px', boxSizing: 'border-box' as const, lineHeight: 1 };
     return onSelect ? (
-      <button key={`${kind}-${node}`} type="button" className={className} style={style} aria-pressed={highlight?.bands[i] ?? false} onClick={(e) => onSelect({ kind, node }, e)}>
+      <button
+        key={`${kind}-${node}`}
+        type="button"
+        className={bandClass}
+        style={style}
+        aria-current={highlight?.bands[i] ? 'true' : undefined}
+        onClick={(e) => onSelect({ kind, node }, e)}
+      >
         {node}
       </button>
     ) : (
-      <div key={`${kind}-${node}`} className={className} style={style}>
+      <div key={`${kind}-${node}`} className={bandClass} style={style}>
         {node}
       </div>
     );
   };
+
+  const cellTarget = (i: number, j: number): MatrixTarget => ({
+    kind: 'cell',
+    source: matrix.order[i],
+    target: matrix.order[j],
+    undirected: bothWays,
+  });
 
   const cells = matrix.cells.map((row, i) =>
     row.map((value, j) => {
@@ -208,9 +227,23 @@ export function GraphMatrix({
             inBand ? 'zodal-matrix__cell--band' : undefined,
             selected ? 'zodal-matrix__cell--selected' : undefined,
           )}
-          title={`${matrix.order[i]} → ${matrix.order[j]}: ${value}`}
+          title={`${matrix.order[i]} ${arrow} ${matrix.order[j]}: ${value}`}
           data-value={value}
-          onClick={onSelect ? (e) => onSelect({ kind: 'cell', source: matrix.order[i], target: matrix.order[j] }, e) : undefined}
+          // Selectable cells are keyboard buttons (Enter/Space), and say whether they are selected.
+          {...(onSelect
+            ? {
+                role: 'button',
+                tabIndex: 0,
+                'aria-label': `${matrix.order[i]} ${arrow} ${matrix.order[j]}: ${value}`,
+                'aria-pressed': selected,
+                onClick: (e: ReactMouseEvent) => onSelect(cellTarget(i, j), e),
+                onKeyDown: (e: ReactKeyboardEvent) => {
+                  if (e.key !== 'Enter' && e.key !== ' ') return;
+                  e.preventDefault();
+                  onSelect(cellTarget(i, j), e);
+                },
+              }
+            : {})}
           style={{
             width: cellSize,
             height: cellSize,

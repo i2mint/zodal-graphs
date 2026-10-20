@@ -147,13 +147,27 @@ describe('<GraphMatrix> linked selection', () => {
     const g = graph();
     const { container } = render(<GraphMatrix graph={g} seriation="none" labels onSelect={onSelect} />);
     fireEvent.click(container.querySelector('[title="a → b: 1"]') as HTMLElement);
-    expect(onSelect.mock.calls[0][0]).toEqual({ kind: 'cell', source: 'a', target: 'b' });
+    expect(onSelect.mock.calls[0][0]).toEqual({ kind: 'cell', source: 'a', target: 'b', undirected: false });
     expect(matrixTargetToSelection(g, onSelect.mock.calls[0][0])).toEqual({ nodes: [], edges: ['e1'] });
     const bands = [...container.querySelectorAll('button.zodal-matrix__band--row')];
     expect(bands.map((b) => b.textContent)).toEqual(['a', 'b', 'c']);
     fireEvent.click(bands[2]);
     expect(onSelect.mock.calls[1][0]).toEqual({ kind: 'row', node: 'c' });
     expect(container.querySelectorAll('button.zodal-matrix__band--column')).toHaveLength(3);
+    // keyboard: a selectable cell is a focusable button that Enter selects
+    const cell = container.querySelector('[title="b → c: 1"]') as HTMLElement;
+    expect(cell.getAttribute('role')).toBe('button');
+    expect(cell.tabIndex).toBe(0);
+    fireEvent.keyDown(cell, { key: 'Enter' });
+    expect(onSelect.mock.calls[2][0]).toMatchObject({ kind: 'cell', source: 'b', target: 'c' });
+  });
+
+  it('a cell hit carries the matrix\'s undirected choice, so its selection matches its highlight', () => {
+    const onSelect = vi.fn();
+    const g = graph(); // directed, but drawn undirected
+    const { container } = render(<GraphMatrix graph={g} seriation="none" undirected onSelect={onSelect} />);
+    fireEvent.click(container.querySelector('[title="b — a: 1"]') as HTMLElement);
+    expect(matrixTargetToSelection(g, onSelect.mock.calls[0][0])).toEqual({ nodes: [], edges: ['e1'] });
   });
 
   it('without onSelect or labels it stays a static image', () => {
