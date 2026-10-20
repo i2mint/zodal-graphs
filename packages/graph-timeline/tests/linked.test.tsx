@@ -79,10 +79,12 @@ describe('<TimelineView view>', () => {
 
   it('removing the filter elsewhere resets the brush', () => {
     const view = createGraphViewStore();
-    const { getByTestId } = render(<TimelineView graph={graph} view={view} />);
+    const onWindowChange = vi.fn();
+    const { getByTestId } = render(<TimelineView graph={graph} view={view} onWindowChange={onWindowChange} />);
     fireEvent.click(getByTestId('brush-0-5'));
     act(() => view.clearFilters());
     expect(reset).toHaveBeenCalledOnce();
+    expect(onWindowChange).toHaveBeenLastCalledWith(null);
   });
 
   it('draws the shared selection, hover and other owners\' filters, but not its own window', () => {
@@ -112,14 +114,15 @@ describe('<TimelineView view>', () => {
     act(() => view.setState({ ...view.getState(), filters: { timeline: filter } }));
     expect(updateBrush).toHaveBeenCalledOnce();
     expect(filterWindow(view.getState().filters.timeline)).toEqual(interval(3, 9)); // not overwritten
-    expect(onWindowChange).not.toHaveBeenCalled();
+    expect(onWindowChange).toHaveBeenLastCalledWith(interval(3, 9)); // the host sees the restored window
+    onWindowChange.mockClear();
     // Another writer moves the window: the brush follows.
     act(() => view.setFilter('timeline', brushFilter(toTimeline(graph), interval(0, 2))));
     expect(updateBrush).toHaveBeenCalledTimes(2);
     expect(filterWindow(view.getState().filters.timeline)).toEqual(interval(0, 2));
     // The store's echo of the user's own drag does not move the brush.
     fireEvent.click(document.querySelector('[data-testid="brush-0-5"]')!);
-    expect(onWindowChange).toHaveBeenCalledOnce();
+    expect(onWindowChange).toHaveBeenCalledTimes(2); // the other writer's window, then the drag
     expect(filterWindow(view.getState().filters.timeline)).toEqual(interval(0, 5));
     expect(updateBrush).toHaveBeenCalledTimes(2);
   });

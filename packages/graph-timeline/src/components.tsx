@@ -128,11 +128,14 @@ export function TimelineView({
   // `meta.window`, and a removed one (or one without a window) clears it. `drawn` is the window the
   // brush shows; a drag updates it before writing the store, so the store's echo of a drag is a
   // no-op (no reset mid-gesture). `pending` counts the brush moves made here: visx reports each one
-  // through `onChange`, and those reports must not be written back.
+  // through `onChange`, and those reports must not be written back (`onWindowChange` gets the
+  // stored window instead).
   const brushRef = useRef<BrushHandle | null>(null);
   const drawn = useRef<Interval | null>(null);
   const drawnScale = useRef(xScale);
   const pending = useRef(0);
+  const windowChange = useRef(onWindowChange);
+  windowChange.current = onWindowChange;
   const ownFilter = linked?.state.filters[filterOwner];
   const storedWindow = useMemo(() => filterWindow(ownFilter), [ownFilter]);
   const syncing = linked !== undefined;
@@ -144,6 +147,7 @@ export function TimelineView({
     if (sameWindow(storedWindow, drawn.current) && !(rescaled && storedWindow)) return;
     drawn.current = storedWindow;
     pending.current += 1;
+    windowChange.current?.(storedWindow); // the host sees the window the brush now shows
     if (!storedWindow) {
       brush.reset();
       return;
