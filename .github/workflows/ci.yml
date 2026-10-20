@@ -49,6 +49,14 @@ jobs:
       - name: Integration tests
         run: pnpm test:integration
 
+      # Linked views in headless Chromium (vitest browser mode): the real DOM paths the happy-dom
+      # tests stub out (visx brush gesture, React Flow events, sigma's WebGL canvas).
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Browser tests
+        run: pnpm test:browser
+
   gate:
     name: Release gate
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
