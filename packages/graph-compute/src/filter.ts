@@ -38,6 +38,18 @@ function getField(el: GraphNode | GraphEdge, field: string): unknown {
 
 const asNum = (v: unknown): number | null => (typeof v === 'number' ? v : null);
 
+/** `in` lists as Sets, built once per list (filters are immutable data), so a long id list (a
+ *  timeline brush) costs O(1) per element instead of a scan. */
+const IN_SETS = new WeakMap<readonly unknown[], Set<unknown>>();
+function inList(list: readonly unknown[], v: unknown): boolean {
+  let set = IN_SETS.get(list);
+  if (!set) {
+    set = new Set(list);
+    IN_SETS.set(list, set);
+  }
+  return set.has(v);
+}
+
 /** Evaluate a predicate against one element. */
 export function matches(el: GraphNode | GraphEdge, pred: FilterPredicate): boolean {
   if ('all' in pred) return pred.all.every((p) => matches(el, p));
@@ -53,7 +65,7 @@ export function matches(el: GraphNode | GraphEdge, pred: FilterPredicate): boole
     case 'ne':
       return v !== w;
     case 'in':
-      return Array.isArray(w) && w.includes(v);
+      return Array.isArray(w) && inList(w, v);
     case 'contains':
       return typeof v === 'string' && typeof w === 'string' && v.toLowerCase().includes(w.toLowerCase());
     case 'lt':

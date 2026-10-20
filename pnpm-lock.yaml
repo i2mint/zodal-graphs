@@ -17,6 +17,12 @@ importers:
       '@zodal/graph-react-flow':
         specifier: workspace:*
         version: link:packages/graph-react-flow
+      '@zodal/graph-table':
+        specifier: workspace:*
+        version: link:packages/graph-table
+      '@zodal/graph-timeline':
+        specifier: workspace:*
+        version: link:packages/graph-timeline
       '@zodal/graph-ui':
         specifier: workspace:*
         version: link:packages/graph-ui
@@ -270,6 +276,9 @@ importers:
       '@visx/scale':
         specifier: ^4.0.0
         version: 4.0.0
+      '@zodal/graph-compute':
+        specifier: workspace:*
+        version: link:../graph-compute
       happy-dom:
         specifier: ^15.0.0
         version: 15.11.7
@@ -291,6 +300,9 @@ importers:
 
   packages/graph-ui:
     dependencies:
+      '@zodal/graph-compute':
+        specifier: workspace:*
+        version: link:../graph-compute
       '@zodal/graph-core':
         specifier: workspace:*
         version: link:../graph-core

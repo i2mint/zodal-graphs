@@ -10,6 +10,8 @@
  *  - `createGraphRendererRegistry` + entry/selection types — the capability-ranked registry
  *  - `makeTester` + composable predicates — author the schema↔render mappings declaratively
  *  - `PRIORITY` bands, `GraphRenderContext`, `computeGaps` / `CapabilityGap` — the supporting vocabulary
+ *  - `createGraphViewStore` + pure transitions/projections — the shared view state (active view,
+ *    selection, per-owner filters, hover) that links every lens, and `linkedOverlays` to draw it
  */
 
 export * from './priority.js';
@@ -17,3 +19,4 @@ export * from './context.js';
 export * from './testers.js';
 export * from './gaps.js';
 export * from './registry.js';
+export * from './view-state.js';

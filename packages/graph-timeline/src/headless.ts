@@ -10,3 +10,4 @@ export * from './interval.js';
 export * from './tiers.js';
 export * from './timeline.js';
 export * from './capabilities.js';
+export * from './brush.js';

@@ -31,7 +31,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@zodal/graph-core": "workspace:*"
+    "@zodal/graph-core": "workspace:*",
+    "@zodal/graph-compute": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.0.0",

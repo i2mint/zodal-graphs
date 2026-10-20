@@ -12,6 +12,8 @@
     "@zodal/graph-compute": "workspace:*",
     "@zodal/graph-core": "workspace:*",
     "@zodal/graph-react-flow": "workspace:*",
+    "@zodal/graph-table": "workspace:*",
+    "@zodal/graph-timeline": "workspace:*",
     "@zodal/graph-ui": "workspace:*",
     "turbo": "^2.0.0",
     "typescript": "^5.7.0",
