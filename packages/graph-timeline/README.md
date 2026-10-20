@@ -58,7 +58,10 @@ that reports back as a rational-time `Interval` via `onWindowChange`. Install th
 **Linked views:** `<TimelineView graph={graph} view={store} />` with `@zodal/graph-ui`'s shared view
 store writes the brushed window as `brushFilter(model, window)` under the `'timeline'` filter owner
 (`filterOwner` / `brushOptions` to change), so every other lens fades or hides what falls outside it;
-clearing the brush removes the filter, and removing it elsewhere clears the brush. The timeline
+clearing the brush removes the filter. The brush follows the store too: a filter restored through
+`view.setState` (a saved view, a URL) or written by someone else is redrawn from its `meta.window`
+(`filterWindow(filter)` reads it), removing it elsewhere clears the brush, and changing
+`filterOwner` removes the old owner's filter. The timeline
 draws the shared selection (outlined), hover, and the OTHER owners' filters (its own window is shown
 by the brush, not by dimming itself). With plain numeric times the filter is a pair of
 `data.start`/`data.end` range predicates (small, and still right after the graph gains nodes); with
