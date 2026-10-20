@@ -1,6 +1,7 @@
 {
   "name": "@zodal/graph-layout",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "Renderer-agnostic layout engine for zodal-graphs: applies a GraphLayout hint to a canonical graph and returns node positions (layered-by-rank, radial/ego, swimlane, circular)",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -22,7 +23,8 @@
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
   "scripts": {
     "build": "tsup",

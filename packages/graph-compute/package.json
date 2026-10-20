@@ -1,6 +1,7 @@
 {
   "name": "@zodal/graph-compute",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "Renderer-agnostic graph-theory and provenance overlay engine for zodal-graphs (computed once on the graphology hub, drawn on any renderer)",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -22,7 +23,8 @@
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
   "scripts": {
     "build": "tsup",

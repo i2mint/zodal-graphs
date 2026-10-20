@@ -1,6 +1,7 @@
 {
   "name": "@zodal/graph-table",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "Table / matrix / form lenses for zodal-graphs — data shaping + TanStack table + heat-cell matrix",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -33,7 +34,8 @@
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
   "scripts": {
     "build": "tsup",

@@ -1,6 +1,7 @@
 {
   "name": "@zodal/graph-sigma",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "Large-sparse WebGL viz renderer for zodal-graphs (sigma.js over the graphology hub, with overlay styling)",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -33,7 +34,8 @@
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
   "scripts": {
     "build": "tsup",
