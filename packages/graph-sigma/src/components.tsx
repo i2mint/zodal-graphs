@@ -122,7 +122,9 @@ export function SigmaView({ graph, overlays, styleOptions, view }: SigmaViewProp
     for (const [event, handler] of Object.entries(handlers)) renderer.on(event as never, handler as never);
     return () => {
       for (const [event, handler] of Object.entries(handlers)) renderer.off(event as never, handler as never);
-      renderer.setSetting('enableEdgeEvents', false);
+      // On unmount or a new graph the instance is already killed (its effect cleans up first):
+      // a setting change would re-render a torn-down renderer.
+      if (sigmaRef.current === renderer) renderer.setSetting('enableEdgeEvents', false);
     };
   }, [view, instance]);
 

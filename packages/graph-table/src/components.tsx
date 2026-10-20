@@ -29,7 +29,7 @@ import {
 } from '@tanstack/react-table';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactElement } from 'react';
 import type { CanonicalGraph, GraphSelection } from '@zodal/graph-core';
-import type { GraphViewStore } from '@zodal/graph-ui';
+import type { GraphViewState, GraphViewStore } from '@zodal/graph-ui';
 import { useGraphView, useLinkedView } from '@zodal/graph-ui/react';
 import { inferColumns, toEdgeRows, toNodeRows, type EdgeRow, type NodeRow } from './rows.js';
 import { reorderMatrix, seriate, toAdjacencyMatrix, type SeriationMethod } from './matrix.js';
@@ -102,22 +102,30 @@ export function GraphTable({ graph, of = 'nodes', className, view, selectable = 
   }, [allRows, withSelection, of]);
   const [sorting, setSorting] = useState<SortingState>([]);
   const selection = linked?.state.selection;
-  const rowSelection = useMemo<RowSelectionState>(
-    () => (selection ? selectionToRowSelection(selection, kind) : {}),
-    [selection, kind],
-  );
+  // Only the rows on show: a selected id the table does not list (hidden, or not of its kind) must
+  // not make the select-all checkbox look partly checked.
+  const rowSelection = useMemo<RowSelectionState>(() => {
+    if (!selection) return {};
+    const shown = new Set(rows.map(rowId));
+    return Object.fromEntries(Object.entries(selectionToRowSelection(selection, kind)).filter(([id]) => shown.has(id)));
+  }, [selection, kind, rows]);
   const table = useReactTable({
     data: rows,
     columns,
     state: { sorting, rowSelection },
     onSortingChange: setSorting,
     enableRowSelection: withSelection,
-    // TanStack's next rowSelection keeps ids it does not list (hidden rows), so a hidden selected
-    // row stays selected; only this table's kind is written, so the other kind is left alone.
+    // Based on the store's CURRENT selection (not this render's), so two toggles in one batch both
+    // land. Selected ids the table does not show (hidden rows) are kept; only this table's kind is
+    // written, so the other kind is left alone.
     onRowSelectionChange: (updater) => {
       if (!view) return;
-      const next = typeof updater === 'function' ? updater(rowSelection) : updater;
-      view.setSelection(rowSelectionToSelection(next, kind));
+      const current = selectionToRowSelection(view.getState().selection, kind);
+      const shown = new Set(rows.map(rowId));
+      const visible = Object.fromEntries(Object.entries(current).filter(([id]) => shown.has(id)));
+      const next = typeof updater === 'function' ? updater(visible) : updater;
+      const offscreen = Object.fromEntries(Object.entries(current).filter(([id]) => !shown.has(id)));
+      view.setSelection(rowSelectionToSelection({ ...offscreen, ...next }, kind));
     },
     getRowId: rowId, // React key = node/edge id, stable across sorts
     getCoreRowModel: getCoreRowModel(),
@@ -218,6 +226,8 @@ function Checkbox({
   return <input ref={ref} type="checkbox" className="zodal-table__select" aria-label={label} checked={checked} onChange={onChange} />;
 }
 
+const selectSelection = (state: GraphViewState): GraphSelection => state.selection;
+
 const rowId = (row: Row): string => String((row as Record<string, unknown>).id ?? '');
 
 export interface GraphMatrixProps {
@@ -261,8 +271,9 @@ export function GraphMatrix({
   labels = false,
   view,
 }: GraphMatrixProps): ReactElement {
-  const shared = useGraphView(view);
-  selection ??= shared?.selection;
+  // Only the selection: hover and filter changes in other lenses must not re-render n² cells.
+  const sharedSelection = useGraphView(view, selectSelection); // called unconditionally (hook rules)
+  selection ??= sharedSelection;
   onSelect ??= view ? (target) => view.setSelection(matrixTargetToSelection(graph, target, { undirected })) : undefined;
   const matrix = useMemo(() => {
     const base = toAdjacencyMatrix(graph, { weight, undirected });

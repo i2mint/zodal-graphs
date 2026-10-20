@@ -38,6 +38,23 @@ describe('useGraphView', () => {
     expect(renders).toBe(before);
   });
 
+  it('with a selector, re-renders only when that slice changes', () => {
+    const store = createGraphViewStore();
+    let renders = 0;
+    const pickSel = (s: { selection: unknown }) => s.selection;
+    function Probe() {
+      renders += 1;
+      useGraphView(store, pickSel);
+      return null;
+    }
+    render(<Probe />);
+    const before = renders;
+    act(() => store.setHovered({ kind: 'node', id: 'a' }));
+    expect(renders).toBe(before);
+    act(() => store.setSelection({ nodes: ['a'] }));
+    expect(renders).toBe(before + 1);
+  });
+
   it('returns undefined without a store', () => {
     function Probe() {
       return <span>{useGraphView(undefined) === undefined ? 'standalone' : 'linked'}</span>;

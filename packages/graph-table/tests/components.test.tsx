@@ -218,6 +218,18 @@ describe('<GraphTable view> (linked views)', () => {
     expect(container.querySelectorAll('tr[data-dimmed]')).toHaveLength(0);
   });
 
+  it('keeps a selected row that a filter hides, and it does not make select-all look partial', () => {
+    const view = createGraphViewStore();
+    view.setSelection({ nodes: ['c'] });
+    view.setFilter('facet', { nodes: { field: 'id', op: 'in', value: ['a', 'b'] }, mode: 'hide' });
+    const { getByLabelText } = render(<GraphTable graph={graph()} view={view} />);
+    expect((getByLabelText('Select all nodes') as HTMLInputElement).indeterminate).toBe(false);
+    fireEvent.click(getByLabelText('Select a'));
+    expect([...view.getState().selection.nodes].sort()).toEqual(['a', 'c']);
+    fireEvent.click(getByLabelText('Select all nodes'));
+    expect([...view.getState().selection.nodes].sort()).toEqual(['a', 'b', 'c']);
+  });
+
   it('reports row hover to the shared state', () => {
     const view = createGraphViewStore();
     const { container } = render(<GraphTable graph={graph()} view={view} />);

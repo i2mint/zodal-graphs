@@ -34,6 +34,7 @@ class FakeSigma {
     for (const h of this.handlers.get(event) ?? []) h(payload);
   }
   setSetting(key: string, value: unknown) {
+    if (this.killed) throw new Error('setSetting on a killed renderer');
     this.settings[key] = value;
   }
   refresh() {}
@@ -70,6 +71,15 @@ const node = (sigma: FakeSigma, id: string) => (sigma.settings.nodeReducer as Re
 const edge = (sigma: FakeSigma, id: string) => (sigma.settings.edgeReducer as Reducer)?.(id, {}) ?? {};
 
 describe('<SigmaView view>', () => {
+  it('rebuilds for a new graph without touching the killed instance, and rewires events', () => {
+    const view = createGraphViewStore();
+    const { rerender } = render(<SigmaView graph={graph} view={view} />);
+    expect(() => rerender(<SigmaView graph={{ ...graph }} view={view} />)).not.toThrow();
+    expect(instances).toHaveLength(2);
+    act(() => instances[1].emit('clickNode', { node: 'b', ...click() }));
+    expect(view.getState().selection.nodes).toEqual(['b']);
+  });
+
   it('writes clicks, shift-clicks, stage clicks and hover to the shared state', () => {
     const view = createGraphViewStore();
     render(<SigmaView graph={graph} view={view} />);
@@ -121,7 +131,7 @@ describe('<SigmaView view>', () => {
     act(() => view.setSelection({ nodes: ['a'] }));
     expect(node(sigma, 'a').highlighted).toBe(true);
     expect(node(sigma, 'b').highlighted).toBe(true);
-    unmount();
+    expect(() => unmount()).not.toThrow(); // no setting change on the killed instance
     expect(sigma.killed).toBe(true);
     expect([...sigma.handlers.values()].every((set) => set.size === 0)).toBe(true);
   });

@@ -17,6 +17,8 @@
  * canvas draws the shared state — React Flow's own `selected` for the selection, the
  * `zodal-flow--hovered` / `zodal-flow--dimmed` classes (dimmed is also faded inline) for hover and
  * what only `'fade'` filters drop, and React Flow's `hidden` for what a `'hide'` filter removes.
+ * React Flow's own box (drag) selection does not reach the store yet, so it does nothing with a
+ * `view`; deleting an element drops it from the shared selection.
  */
 
 import {
@@ -135,12 +137,23 @@ export function GraphFlowView({ graph, capabilities, view }: GraphFlowViewProps)
 
   // With a store, the store owns selection: React Flow's own 'select' changes are dropped (the click
   // handlers below write the store, and `decorate` draws it back as `selected`).
+  // A deleted element leaves the shared selection too.
   const handleNodesChange = useCallback<OnNodesChange>(
-    (changes) => onNodesChange(view ? changes.filter((c) => c.type !== 'select') : changes),
+    (changes) => {
+      if (!view) return onNodesChange(changes);
+      onNodesChange(changes.filter((c) => c.type !== 'select'));
+      const removed = new Set(changes.flatMap((c) => (c.type === 'remove' ? [c.id] : [])));
+      if (removed.size > 0) view.setSelection({ nodes: view.getState().selection.nodes.filter((id) => !removed.has(id)) });
+    },
     [onNodesChange, view],
   );
   const handleEdgesChange = useCallback<OnEdgesChange>(
-    (changes) => onEdgesChange(view ? changes.filter((c) => c.type !== 'select') : changes),
+    (changes) => {
+      if (!view) return onEdgesChange(changes);
+      onEdgesChange(changes.filter((c) => c.type !== 'select'));
+      const removed = new Set(changes.flatMap((c) => (c.type === 'remove' ? [c.id] : [])));
+      if (removed.size > 0) view.setSelection({ edges: view.getState().selection.edges.filter((id) => !removed.has(id)) });
+    },
     [onEdgesChange, view],
   );
   const shown = useMemo(

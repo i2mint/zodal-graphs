@@ -76,7 +76,8 @@ const view = createGraphViewStore({ capabilities: graphDef.getCapabilities() });
 
 `<GraphMatrix view>` and graph-react-flow's `<GraphFlowView view>` take the same prop. In your own
 React lens, `useGraphView(store)` (from `@zodal/graph-ui/react`; `react` is an optional peer) is the
-one `useSyncExternalStore` subscription, and `useLinkedView(graph, store)` adds what to draw: the
+one `useSyncExternalStore` subscription (`useGraphView(store, (s) => s.selection)` reads one slice
+and re-renders only when it changes), and `useLinkedView(graph, store)` adds what to draw: the
 `kept` / `hidden` id sets and the `linkedOverlays`.
 
 Without React, or to wire a lens by hand, the pieces are pure:

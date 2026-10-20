@@ -140,7 +140,8 @@ export function clearFilters(state: GraphViewState): GraphViewState {
 }
 
 /**
- * The selection a click on `element` makes, the same in every lens: a plain click selects that one
+ * The selection a pointer click on `element` makes, the same in every node-link lens (and the
+ * timeline): a plain click selects that one
  * element alone (dropping every other node and edge), an `additive` click (shift, by convention)
  * toggles it in or out and keeps the rest. Pass the result to `setSelection`.
  */
@@ -251,8 +252,9 @@ export interface LinkedRoles {
  * Overlays cannot remove elements: draw only what is not in `linkedFilterResult(...).hidden` when an
  * owner hides. Renderers resolve conflicts by role priority, so a selected node stays primary even
  * when hovered or dimmed (the selection is kept and marked, never pruned by a filter). A renderer
- * with a focus mode that fades every element without a role (graph-sigma's `dimUnhighlighted`)
- * should turn it off for these overlays, which already say what to dim.
+ * with a focus mode that fades every element without a role should not let the `'filter'` layer
+ * (only `dimmed` roles) or the `'hover'` layer turn it on: these overlays already say what to dim.
+ * graph-sigma's `dimUnhighlighted` behaves this way.
  */
 export function linkedOverlays(
   graph: CanonicalGraph,
