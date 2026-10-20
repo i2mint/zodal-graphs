@@ -13,12 +13,12 @@
  *
  * Linked views: give `GraphFlowView` the shared `view` store (`@zodal/graph-ui`'s
  * `createGraphViewStore`) and the store owns the selection: a click on a node or edge selects it
- * (shift-click toggles it), a click on the pane clears it, hovering sets the shared hover, and the
+ * (shift-click, or the multi-selection key, toggles it), a box (drag) selection replaces it with
+ * what the box covers, a click on the pane clears it, hovering sets the shared hover, and the
  * canvas draws the shared state — React Flow's own `selected` for the selection, the
  * `zodal-flow--hovered` / `zodal-flow--dimmed` classes (dimmed is also faded inline) for hover and
  * what only `'fade'` filters drop, and React Flow's `hidden` for what a `'hide'` filter removes.
- * React Flow's own box (drag) selection does not reach the store yet, so it does nothing with a
- * `view`; deleting an element drops it from the shared selection.
+ * Deleting an element drops it from the shared selection.
  */
 
 import {
@@ -29,15 +29,17 @@ import {
   useEdgesState,
   useNodesState,
   type Edge,
+  type EdgeChange,
   type IsValidConnection as RFIsValidConnection,
   type Node,
+  type NodeChange,
   type NodeProps,
   type NodeTypes,
   type OnConnect,
   type OnNodesChange,
   type OnEdgesChange,
 } from '@xyflow/react';
-import { useCallback, useEffect, useMemo, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactElement } from 'react';
 import type { CanonicalGraph, GraphCapabilities, ReactFlowNodeData } from '@zodal/graph-core';
 import type { GraphViewStore } from '@zodal/graph-ui';
 import { useLinkedView, type LinkedView } from '@zodal/graph-ui/react';
@@ -91,6 +93,20 @@ function decorate<T extends Node | Edge>(element: T, kind: 'node' | 'edge', link
 }
 
 /** Render a canonical graph as an editable React Flow canvas with generated connection validation. */
+/** Shift, or React Flow's multi-selection key (Meta on macOS, Control elsewhere), adds to the selection. */
+const additive = (event: ReactMouseEvent): boolean => event.shiftKey || event.metaKey || event.ctrlKey;
+
+/** Apply React Flow's 'select' changes to a list of selected ids (order kept, new ids appended). */
+export function applySelectChanges(selected: readonly string[], changes: readonly (NodeChange | EdgeChange)[]): string[] {
+  const next = new Set(selected);
+  for (const c of changes) {
+    if (c.type !== 'select') continue;
+    if (c.selected) next.add(c.id);
+    else next.delete(c.id);
+  }
+  return [...next];
+}
+
 export function GraphFlowView({ graph, capabilities, view }: GraphFlowViewProps): ReactElement {
   const linked = useLinkedView(graph, view);
   const initial = useMemo(() => toReactFlow(graph), [graph]);
@@ -136,14 +152,28 @@ export function GraphFlowView({ graph, capabilities, view }: GraphFlowViewProps)
   const onConnect = useCallback<OnConnect>((connection) => setEdges((eds) => addEdge(connection, eds)), [setEdges]);
 
   // With a store, the store owns selection: React Flow's own 'select' changes are dropped (the click
-  // handlers below write the store, and `decorate` draws it back as `selected`).
+  // handlers below write the store through `view.pick`, and `decorate` draws it back as `selected`),
+  // EXCEPT during a box (drag) selection, between React Flow's `onSelectionStart` and
+  // `onSelectionEnd`. A box replaces the selection: its start clears the store, and React Flow's
+  // 'select' changes (a diff against what was drawn when the box started, then against what the
+  // box wrote) are applied to `box`, a copy of that drawn selection, which is written to the store.
+  // Clicks never happen inside a box gesture, so nothing is written twice.
   // A deleted element leaves the shared selection too.
+  const box = useRef<{ nodes: string[]; edges: string[] } | null>(null);
+  const onCanvas = useMemo(() => ({ nodes: new Set(nodes.map((n) => n.id)), edges: new Set(edges.map((e) => e.id)) }), [nodes, edges]);
+  const canvas = useRef(onCanvas);
+  canvas.current = onCanvas;
   const handleNodesChange = useCallback<OnNodesChange>(
     (changes) => {
       if (!view) return onNodesChange(changes);
       onNodesChange(changes.filter((c) => c.type !== 'select'));
       const removed = new Set(changes.flatMap((c) => (c.type === 'remove' ? [c.id] : [])));
-      if (removed.size > 0) view.setSelection({ nodes: view.getState().selection.nodes.filter((id) => !removed.has(id)) });
+      if (box.current && changes.some((c) => c.type === 'select')) {
+        box.current.nodes = applySelectChanges(box.current.nodes, changes).filter((id) => !removed.has(id));
+        view.setSelection({ nodes: box.current.nodes });
+      } else if (removed.size > 0) {
+        view.setSelection({ nodes: view.getState().selection.nodes.filter((id) => !removed.has(id)) });
+      }
     },
     [onNodesChange, view],
   );
@@ -152,10 +182,29 @@ export function GraphFlowView({ graph, capabilities, view }: GraphFlowViewProps)
       if (!view) return onEdgesChange(changes);
       onEdgesChange(changes.filter((c) => c.type !== 'select'));
       const removed = new Set(changes.flatMap((c) => (c.type === 'remove' ? [c.id] : [])));
-      if (removed.size > 0) view.setSelection({ edges: view.getState().selection.edges.filter((id) => !removed.has(id)) });
+      if (box.current && changes.some((c) => c.type === 'select')) {
+        box.current.edges = applySelectChanges(box.current.edges, changes).filter((id) => !removed.has(id));
+        view.setSelection({ edges: box.current.edges });
+      } else if (removed.size > 0) {
+        view.setSelection({ edges: view.getState().selection.edges.filter((id) => !removed.has(id)) });
+      }
     },
     [onEdgesChange, view],
   );
+  // React Flow does not call `onSelectionEnd` when the pointer is cancelled (touch pan, palm
+  // rejection): end the box on any pointerup/pointercancel so it cannot stay open.
+  useEffect(() => {
+    if (!view) return;
+    const end = () => {
+      box.current = null;
+    };
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+    return () => {
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+    };
+  }, [view]);
   const shown = useMemo(
     () => (linked ? { nodes: nodes.map((n) => decorate(n, 'node', linked)), edges: edges.map((e) => decorate(e, 'edge', linked)) } : { nodes, edges }),
     [nodes, edges, linked],
@@ -164,13 +213,26 @@ export function GraphFlowView({ graph, capabilities, view }: GraphFlowViewProps)
     () =>
       view
         ? {
-            onNodeClick: (event: ReactMouseEvent, node: Node) => view.pick({ kind: 'node', id: node.id }, event.shiftKey),
-            onEdgeClick: (event: ReactMouseEvent, edge: Edge) => view.pick({ kind: 'edge', id: edge.id }, event.shiftKey),
+            onNodeClick: (event: ReactMouseEvent, node: Node) => view.pick({ kind: 'node', id: node.id }, additive(event)),
+            onEdgeClick: (event: ReactMouseEvent, edge: Edge) => view.pick({ kind: 'edge', id: edge.id }, additive(event)),
             onPaneClick: () => view.clearSelection(),
             onNodeMouseEnter: (_: ReactMouseEvent, node: Node) => view.setHovered({ kind: 'node', id: node.id }),
             onNodeMouseLeave: () => view.setHovered(null),
             onEdgeMouseEnter: (_: ReactMouseEvent, edge: Edge) => view.setHovered({ kind: 'edge', id: edge.id }),
             onEdgeMouseLeave: () => view.setHovered(null),
+            onSelectionStart: () => {
+              // What is drawn selected: the stored selection among the elements on the canvas.
+              const { selection } = view.getState();
+              const onCanvas = canvas.current;
+              box.current = {
+                nodes: selection.nodes.filter((id) => onCanvas.nodes.has(id)),
+                edges: selection.edges.filter((id) => onCanvas.edges.has(id)),
+              };
+              view.clearSelection(); // a box that covers nothing selects nothing
+            },
+            onSelectionEnd: () => {
+              box.current = null;
+            },
           }
         : {},
     [view],
