@@ -63,6 +63,20 @@ describe('<GraphFlowView view>', () => {
     expect(view.getState().selection.nodes).toEqual(['f2']);
   });
 
+  it('a box replaces the selection, including ids the canvas does not show', () => {
+    const view = createGraphViewStore();
+    const { container } = render(<GraphFlowView graph={portGraph()} capabilities={caps} view={view} />);
+    act(() => view.setSelection({ nodes: ['f1', 'elsewhere'], edges: ['e-elsewhere'] }));
+    const pane = container.querySelector('.react-flow__pane')!;
+    fireEvent.keyDown(window, { key: 'Shift' });
+    fireEvent.pointerDown(pane, { button: 0, isPrimary: true, pointerId: 1, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(pane, { button: 0, isPrimary: true, pointerId: 1, clientX: 50, clientY: 50 });
+    fireEvent.pointerUp(pane, { button: 0, isPrimary: true, pointerId: 1, clientX: 50, clientY: 50 });
+    fireEvent.keyUp(window, { key: 'Shift' });
+    expect([...view.getState().selection.nodes].sort()).toEqual(['f1', 'f2', 'f3']);
+    expect(view.getState().selection.edges).toEqual([]);
+  });
+
   it('the multi-selection key adds to the selection like shift', () => {
     const view = createGraphViewStore();
     const { container } = render(<GraphFlowView graph={portGraph()} capabilities={caps} view={view} />);
