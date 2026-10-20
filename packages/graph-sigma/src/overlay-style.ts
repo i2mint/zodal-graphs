@@ -10,7 +10,9 @@
  * different roles, the more important one wins (`primary` > path > ancestor/descendant/stale >
  * `component:*` > `dimmed`), so a focal node keeps its focus color under a later structural layer.
  * "Focus mode" (dimming the rest) is decided once across BOTH node and edge roles, so a node-only
- * overlay still dims edges.
+ * overlay still dims edges. Only a real highlight turns it on: a layer of nothing but `dimmed` roles
+ * (a fade filter, which already says what to dim) and the `'hover'` layer (a pointer passing over
+ * one element) do not, so the linked-view overlays of `@zodal/graph-ui` never fade the whole graph.
  */
 
 import type { GraphOverlays, HighlightRole } from '@zodal/graph-core';
@@ -32,7 +34,8 @@ export interface OverlayStyleOptions {
   roleColors?: Record<string, string>;
   /** Categorical palette for `component:N` roles. */
   componentPalette?: string[];
-  /** When any overlay is active, dim elements that are NOT highlighted. Default `true`. */
+  /** When an overlay highlights something, dim elements that are NOT highlighted (focus mode).
+   *  `dimmed`-only layers and the hover layer do not count as highlights. Default `true`. */
   dimUnhighlighted?: boolean;
   /** The focus-dim color (distinct from the `dimmed` role color). */
   dimColor?: string;
@@ -100,9 +103,16 @@ function highestRoles(layerMaps: Array<Record<string, HighlightRole> | undefined
 const nodeRoles = (overlays: GraphOverlays) => highestRoles(overlays.highlights.map((l) => l.nodes));
 const edgeRoles = (overlays: GraphOverlays) => highestRoles(overlays.highlights.map((l) => l.edges));
 
-/** Is any overlay active (any node OR edge role present)? Drives focus-mode dimming consistently. */
+/** The overlay layer a lone hover is drawn in (`linkedOverlays`): it never turns focus mode on. */
+export const HOVER_LAYER = 'hover';
+
+const highlights = (roles: Record<string, HighlightRole> | undefined): boolean =>
+  roles !== undefined && Object.values(roles).some((role) => String(role) !== 'dimmed');
+
+/** Does any overlay highlight something (a non-`dimmed` role on a node OR an edge, outside the hover
+ *  layer)? Drives focus-mode dimming consistently for nodes and edges. */
 function isFocusActive(overlays: GraphOverlays): boolean {
-  return nodeRoles(overlays).size > 0 || edgeRoles(overlays).size > 0;
+  return overlays.highlights.some((l) => l.layer !== HOVER_LAYER && (highlights(l.nodes) || highlights(l.edges)));
 }
 
 /** Build a node styler from overlays. Returns `(nodeId) => style` for use as a sigma node reducer. */

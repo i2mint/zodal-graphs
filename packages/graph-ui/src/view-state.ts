@@ -139,6 +139,22 @@ export function clearFilters(state: GraphViewState): GraphViewState {
   return Object.keys(state.filters).length === 0 ? state : { ...state, filters: {} };
 }
 
+/**
+ * The selection a pointer click on `element` makes, the same in every node-link lens (and the
+ * timeline): a plain click selects that one
+ * element alone (dropping every other node and edge), an `additive` click (shift, by convention)
+ * toggles it in or out and keeps the rest. Pass the result to `setSelection`.
+ */
+export function pickSelection(selection: GraphSelection, element: GraphHover, additive = false): GraphSelection {
+  const key = element.kind === 'node' ? 'nodes' : 'edges';
+  if (!additive) {
+    return { nodes: key === 'nodes' ? [element.id] : [], edges: key === 'edges' ? [element.id] : [] };
+  }
+  const ids = selection[key];
+  const toggled = ids.includes(element.id) ? ids.filter((id) => id !== element.id) : [...ids, element.id];
+  return { nodes: key === 'nodes' ? toggled : [...selection.nodes], edges: key === 'edges' ? toggled : [...selection.edges] };
+}
+
 /** Set (or clear, with `null`) the hovered element. */
 export function setHovered(state: GraphViewState, hovered: GraphHover | null): GraphViewState {
   return sameHover(state.hovered, hovered) ? state : { ...state, hovered: hovered && { kind: hovered.kind, id: hovered.id } };
@@ -236,8 +252,9 @@ export interface LinkedRoles {
  * Overlays cannot remove elements: draw only what is not in `linkedFilterResult(...).hidden` when an
  * owner hides. Renderers resolve conflicts by role priority, so a selected node stays primary even
  * when hovered or dimmed (the selection is kept and marked, never pruned by a filter). A renderer
- * with a focus mode that fades every element without a role (graph-sigma's `dimUnhighlighted`)
- * should turn it off for these overlays, which already say what to dim.
+ * with a focus mode that fades every element without a role should not let the `'filter'` layer
+ * (only `dimmed` roles) or the `'hover'` layer turn it on: these overlays already say what to dim.
+ * graph-sigma's `dimUnhighlighted` behaves this way.
  */
 export function linkedOverlays(
   graph: CanonicalGraph,
@@ -279,6 +296,9 @@ export interface GraphViewStore {
   setFilter(owner: string, filter: GraphFilter | null): void;
   clearFilters(): void;
   setHovered(hovered: GraphHover | null): void;
+  /** Apply a click on `element` to the selection ({@link pickSelection}): select it alone, or with
+   *  `additive` toggle it and keep the rest. */
+  pick(element: GraphHover, additive?: boolean): void;
   /** Replace the whole state (e.g. restoring a saved view from a URL). Trusted as given: it is not
    *  copied or checked against `capabilities` — validate external input before calling it. */
   setState(state: GraphViewState): void;
@@ -325,6 +345,7 @@ export function createGraphViewStore(options: GraphViewStoreOptions = {}): Graph
     setFilter: (owner, filter) => commit(setFilter(state, owner, filter)),
     clearFilters: () => commit(clearFilters(state)),
     setHovered: (hovered) => commit(setHovered(state, hovered)),
+    pick: (element, additive = false) => commit(setSelection(state, pickSelection(state.selection, element, additive))),
     setState: (next) => commit(next),
   };
 }

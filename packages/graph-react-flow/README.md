@@ -46,6 +46,11 @@ import '@xyflow/react/dist/style.css';
 
 `FuncNode` renders one `<Handle>` per port (handle id = port name, so `targetHandle === targetPort`);
 `GraphFlowView` wires `toReactFlow` + `makeIsValidConnection` into `<ReactFlow>`.
+Pass `@zodal/graph-ui`'s shared view store as `view` to link it to the other lenses: the store then
+owns the selection (a click selects, shift-click toggles, a pane click clears; hover sets the shared
+hover), selected elements show as React Flow `selected`, what only `'fade'` filters drop gets
+`zodal-flow--dimmed` (faded), the hovered one `zodal-flow--hovered`, and `'hide'` filters hide.
+React Flow's box (drag) selection does not reach the store yet.
 
 ## Scope (this checkpoint)
 

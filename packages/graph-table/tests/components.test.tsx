@@ -4,7 +4,8 @@
  */
 
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { cleanup, fireEvent, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
+import { createGraphViewStore } from '@zodal/graph-ui';
 import type { CanonicalGraph } from '@zodal/graph-core';
 import { nodeId, edgeId } from '@zodal/graph-core';
 import { GraphTable, GraphMatrix, matrixTargetToSelection } from '../src/index.js';
@@ -174,5 +175,86 @@ describe('<GraphMatrix> linked selection', () => {
     const { container } = render(<GraphMatrix graph={graph()} />);
     expect(container.querySelector('.zodal-matrix')?.getAttribute('role')).toBe('img');
     expect(container.querySelector('.zodal-matrix__band')).toBeNull();
+  });
+});
+
+describe('<GraphTable view> (linked views)', () => {
+  const rowIds = (container: HTMLElement) => [...container.querySelectorAll('tbody tr')].map((tr) => tr.querySelector('td:nth-child(2)')?.textContent);
+
+  it('adds a selection column bound to the shared selection, both ways', () => {
+    const view = createGraphViewStore();
+    const { container, getByLabelText } = render(<GraphTable graph={graph()} view={view} />);
+    fireEvent.click(getByLabelText('Select a'));
+    expect(view.getState().selection.nodes).toEqual(['a']);
+    expect(container.querySelector('tr[data-selected]')?.className).toContain('zodal-table__row--selected');
+    act(() => view.setSelection({ nodes: ['b', 'c'] })); // another lens selects
+    expect((getByLabelText('Select a') as HTMLInputElement).checked).toBe(false);
+    expect((getByLabelText('Select b') as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(getByLabelText('Select all nodes')); // some selected → select all
+    expect([...view.getState().selection.nodes].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('writes only its own kind: an edge table leaves the node selection alone', () => {
+    const view = createGraphViewStore();
+    view.setSelection({ nodes: ['a'] });
+    const { getByLabelText } = render(<GraphTable graph={graph()} of="edges" view={view} />);
+    fireEvent.click(getByLabelText('Select e2'));
+    expect(view.getState().selection).toEqual({ nodes: ['a'], edges: ['e2'] });
+  });
+
+  it('hides rows a hide filter removes and dims rows a fade filter drops (selected rows stay full)', () => {
+    const view = createGraphViewStore();
+    const { container } = render(<GraphTable graph={graph()} view={view} />);
+    act(() => view.setFilter('facet', { nodes: { field: 'id', op: 'in', value: ['a', 'b'] }, mode: 'hide' }));
+    expect(rowIds(container)).toEqual(['a', 'b']);
+    act(() => {
+      view.setFilter('facet', { nodes: { field: 'id', op: 'eq', value: 'a' }, mode: 'fade' });
+      view.setSelection({ nodes: ['c'] });
+    });
+    expect(rowIds(container)).toEqual(['a', 'b', 'c']);
+    const dimmed = [...container.querySelectorAll('tr[data-dimmed]')].map((tr) => tr.querySelector('td:nth-child(2)')?.textContent);
+    expect(dimmed).toEqual(['b']); // c is filtered out too, but selected
+    act(() => view.clearFilters());
+    expect(container.querySelectorAll('tr[data-dimmed]')).toHaveLength(0);
+  });
+
+  it('keeps a selected row that a filter hides, and it does not make select-all look partial', () => {
+    const view = createGraphViewStore();
+    view.setSelection({ nodes: ['c'] });
+    view.setFilter('facet', { nodes: { field: 'id', op: 'in', value: ['a', 'b'] }, mode: 'hide' });
+    const { getByLabelText } = render(<GraphTable graph={graph()} view={view} />);
+    expect((getByLabelText('Select all nodes') as HTMLInputElement).indeterminate).toBe(false);
+    fireEvent.click(getByLabelText('Select a'));
+    expect([...view.getState().selection.nodes].sort()).toEqual(['a', 'c']);
+    fireEvent.click(getByLabelText('Select all nodes'));
+    expect([...view.getState().selection.nodes].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('reports row hover to the shared state', () => {
+    const view = createGraphViewStore();
+    const { container } = render(<GraphTable graph={graph()} view={view} />);
+    const row = container.querySelectorAll('tbody tr')[1];
+    fireEvent.mouseEnter(row);
+    expect(view.getState().hovered).toEqual({ kind: 'node', id: 'b' });
+    expect(row.className).toContain('zodal-table__row--hovered');
+    fireEvent.mouseLeave(row);
+    expect(view.getState().hovered).toBeNull();
+  });
+
+  it('selectable={false} keeps the filter wiring but drops the checkbox column', () => {
+    const view = createGraphViewStore();
+    const { container } = render(<GraphTable graph={graph()} view={view} selectable={false} />);
+    expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+  });
+});
+
+describe('<GraphMatrix view> (linked views)', () => {
+  it('highlights the shared selection and writes band clicks back', () => {
+    const view = createGraphViewStore();
+    const { container, getAllByRole } = render(<GraphMatrix graph={graph()} seriation="none" labels view={view} />);
+    expect(container.querySelector('.zodal-matrix__band--selected')).toBeNull();
+    fireEvent.click(getAllByRole('button', { name: 'b' })[0]);
+    expect(view.getState().selection).toEqual({ nodes: ['b'], edges: [] });
+    expect(container.querySelectorAll('.zodal-matrix__band--selected').length).toBeGreaterThan(0);
   });
 });

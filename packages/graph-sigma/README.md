@@ -39,7 +39,14 @@ const styleNode = nodeOverlayStyle(overlays);  // (nodeId) => { color, highlight
 import { SigmaView } from '@zodal/graph-sigma';
 
 <SigmaView graph={graph} overlays={overlays} />;
+<SigmaView graph={graph} view={store} />; // linked views: @zodal/graph-ui's shared view store
 ```
+
+With `view`, a node or edge click selects it in the shared state (shift-click toggles), a stage
+click clears the selection, hover sets the shared hover, and `linkedOverlays` are drawn on top of
+any `overlays` (what a `'hide'` filter removes is hidden). Focus mode (`dimUnhighlighted`) is only
+turned on by a real highlight: a layer of only `dimmed` roles (a fade filter) or the `hover` layer
+does not fade the rest of the graph.
 
 `SigmaView` loads the graph via the graphology hub, seeds default coordinates, and wires the overlay
 stylers into sigma's node/edge reducers.

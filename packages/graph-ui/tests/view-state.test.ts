@@ -10,6 +10,7 @@ import {
   setFilter,
   clearFilters,
   setHovered,
+  pickSelection,
   linkedFilterResult,
   linkedOverlays,
   createGraphViewStore,
@@ -195,5 +196,31 @@ describe('createGraphViewStore', () => {
     const saved = setSelection(store.getState(), { nodes: ['c'] });
     store.setState(saved);
     expect(store.getState()).toBe(saved);
+  });
+});
+
+describe('pickSelection (a click, the same in every lens)', () => {
+  const sel = { nodes: ['a', 'b'], edges: ['e1'] };
+
+  it('a plain click selects the element alone', () => {
+    expect(pickSelection(sel, { kind: 'node', id: 'c' })).toEqual({ nodes: ['c'], edges: [] });
+    expect(pickSelection(sel, { kind: 'edge', id: 'e2' })).toEqual({ nodes: [], edges: ['e2'] });
+  });
+
+  it('an additive click toggles the element and keeps the rest', () => {
+    expect(pickSelection(sel, { kind: 'node', id: 'c' }, true)).toEqual({ nodes: ['a', 'b', 'c'], edges: ['e1'] });
+    expect(pickSelection(sel, { kind: 'node', id: 'a' }, true)).toEqual({ nodes: ['b'], edges: ['e1'] });
+    expect(pickSelection(sel, { kind: 'edge', id: 'e1' }, true)).toEqual({ nodes: ['a', 'b'], edges: [] });
+  });
+
+  it('store.pick applies it, and a repeated plain click is a no-op', () => {
+    const store = createGraphViewStore();
+    const listener = vi.fn();
+    store.subscribe(listener);
+    store.pick({ kind: 'node', id: 'a' });
+    store.pick({ kind: 'node', id: 'a' });
+    expect(listener).toHaveBeenCalledOnce();
+    store.pick({ kind: 'node', id: 'b' }, true);
+    expect(store.getState().selection).toEqual({ nodes: ['a', 'b'], edges: [] });
   });
 });
