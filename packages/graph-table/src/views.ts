@@ -4,7 +4,8 @@
  *
  * The key idea (from the research): view switching is a single field over one shared state, so
  * everything else (selection, filters) survives the switch. These pure helpers model that field;
- * a host stores the rest of the state alongside `activeView`.
+ * a host stores the rest of the state alongside `activeView`. In an app with `@zodal/graph-ui`'s
+ * shared view store, switch through `store.setActiveView` instead, so every lens is notified.
  */
 
 import type { GraphCapabilities, GraphView } from '@zodal/graph-core';

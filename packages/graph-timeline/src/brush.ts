@@ -5,7 +5,9 @@
  * annotations outside the window, the table drops their rows.
  *
  * The filter is plain, serializable data (an `id in [...]` predicate), so it travels with the view
- * state (URL, saved scene) like any other filter.
+ * state (URL, saved scene) like any other filter. It is a snapshot of the model's ids: rebuild it
+ * when the graph changes (a node added later counts as untimed). graph-compute evaluates `in` lists
+ * as Sets, so a long brush costs O(1) per element.
  */
 
 import type { FilterPredicate, GraphFilter } from '@zodal/graph-core';

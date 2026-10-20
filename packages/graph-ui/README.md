@@ -72,9 +72,17 @@ rowSelection: selectionToRowSelection(view.getState().selection, 'node');
 // timeline lens: a brushed window becomes the timeline's filter
 onBrush: (window) => view.setFilter('timeline', brushFilter(toTimeline(graph), window));
 
-// node-link lens: draw the shared state as overlays (selection primary, filtered-out dimmed, hover related)
+// node-link lens: draw the shared state as overlays (selection primary, faded-out dimmed, hover related),
+// and leave out what a 'hide' owner removes
 overlays = linkedOverlays(graph, view.getState());
+hidden = linkedFilterResult(graph, view.getState())?.hidden; // { nodes, edges } not to draw
 ```
+
+With graph-sigma, pass `dimUnhighlighted: false` to its overlay styling: these overlays already say
+what to dim, and its focus mode would otherwise fade every element without a role. A selected node
+stays `primary` even when a filter dims it (the selection is kept and marked, never pruned).
+`graph-table`'s `switchView` helpers are pure conveniences over the same `activeView` field; in an
+app with the store, switch through `store.setActiveView` so every lens is notified.
 
 `getState` + `subscribe` plug into React's `useSyncExternalStore`. The pure transitions
 (`setSelection`, `setFilter`, `setActiveView`, …) return the same object when nothing changed.
@@ -90,7 +98,7 @@ overlays = linkedOverlays(graph, view.getState());
 | `computeGaps` / `CapabilityGap` | the degrade report |
 | `createGraphViewStore({ initial?, capabilities? })` | the shared view store: `getState`, `subscribe`, `setActiveView`, `setSelection`, `setFilter(owner, filter \| null)`, `setHovered`, `clear*`, `setState` |
 | `initGraphViewState`, `setActiveView`, `setSelection`, `clearSelection`, `setFilter`, `clearFilters`, `setHovered` | the same transitions as pure functions over `GraphViewState` |
-| `combinedFilter(state)` · `linkedFilterResult(graph, state)` · `linkedOverlays(graph, state)` | what a lens draws: the AND of all owned filters, its result, and the `GraphOverlays` for node-link |
+| `linkedFilterResult(graph, state)` · `linkedOverlays(graph, state)` | what a lens draws: what every owner keeps (`selection`), what a hide owner removes (`hidden`), what only fade owners drop (dimmed), and the `GraphOverlays` for node-link |
 
 `resolve()` returns the renderer payload; `select()` adds the `degraded` report; `explain()`
 returns the full ranking (why a renderer won). Ties resolve to the first-registered entry.

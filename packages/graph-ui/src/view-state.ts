@@ -4,16 +4,15 @@
  *
  * One serializable object holds what the lenses share: the `activeView` (the `GraphView` enum, so a
  * switch is one field and everything else survives it), the `selection` (`GraphSelection`: a table's
- * selected rows ARE `selection.nodes`), the `filters` (one `GraphFilter` per owning lens or control,
- * honoured by every lens as their conjunction — crossfilter-style, so a timeline brush and a facet
- * filter compose instead of overwriting each other), and the `hovered` element.
+ * selected rows ARE `selection.nodes`), the `filters` (one `GraphFilter` per owning lens or control;
+ * an element is kept only when EVERY owner keeps it — crossfilter-style, so a timeline brush and a
+ * facet filter compose instead of overwriting each other), and the `hovered` element.
  *
  * Three layers, each usable alone:
  *  - pure transitions (`setActiveView`, `setSelection`, `setFilter`, …) that return a new state, or
  *    the SAME object when nothing changed (so a host's equality check skips the re-render);
- *  - pure projections (`combinedFilter`, `linkedFilterResult`, `linkedOverlays`) that turn the state
- *    into what a lens draws — `linkedOverlays` is the `GraphOverlays` a node-link renderer already
- *    consumes;
+ *  - pure projections (`linkedFilterResult`, `linkedOverlays`) that turn the state into what a lens
+ *    draws — `linkedOverlays` is the `GraphOverlays` a node-link renderer already consumes;
  *  - `createGraphViewStore`, a framework-free subscribable store over those transitions
  *    (`getState` + `subscribe` plug into React's `useSyncExternalStore`).
  *
@@ -22,7 +21,6 @@
 
 import type {
   CanonicalGraph,
-  FilterPredicate,
   GraphCapabilities,
   GraphFilter,
   GraphOverlays,
@@ -46,7 +44,7 @@ export interface GraphViewState {
   /** The shared selection: table rows, node-link picks and matrix bands all read and write it. */
   selection: GraphSelection;
   /** Active filters by owner (a lens id such as `'timeline'`, or a control such as `'facet:type'`).
-   *  Every lens honours their conjunction ({@link combinedFilter}). */
+   *  An element is kept only when every owner keeps it ({@link linkedFilterResult}). */
   filters: Record<string, GraphFilter>;
   /** The hovered element, or null. */
   hovered: GraphHover | null;
@@ -75,9 +73,18 @@ const sameList = (a: readonly string[], b: readonly string[]): boolean =>
 const sameSelection = (a: GraphSelection, b: GraphSelection): boolean =>
   a.name === b.name && sameList(a.nodes, b.nodes) && sameList(a.edges, b.edges);
 
-/** Filters are plain serializable data, so their JSON is a sound structural key. */
+/** JSON with object keys sorted, so key order does not make equal filters look different. */
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+}
+
+/** Filters are plain serializable data, so a key-sorted JSON is a sound structural key. */
 const sameFilter = (a: GraphFilter | undefined, b: GraphFilter | undefined): boolean =>
-  JSON.stringify(a) === JSON.stringify(b);
+  a === b || (a !== undefined && b !== undefined && stableJson(a) === stableJson(b));
 
 const sameHover = (a: GraphHover | null, b: GraphHover | null): boolean =>
   a === b || (a !== null && b !== null && a.kind === b.kind && a.id === b.id);
@@ -96,10 +103,12 @@ export function setActiveView(
   return { ...state, activeView: view };
 }
 
-/** Replace the shared selection. A partial selection leaves the omitted parts as they were:
- *  selecting table rows of nodes does not drop selected edges unless `edges` is given. */
+/** Replace the shared selection. A partial selection leaves the omitted ids as they were: selecting
+ *  table rows of nodes does not drop selected edges unless `edges` is given. A `name` labels its
+ *  contents, so new ids without a `name` drop the old one. */
 export function setSelection(state: GraphViewState, selection: Partial<GraphSelection>): GraphViewState {
-  const name = 'name' in selection ? selection.name : state.selection.name;
+  const idsChanged = selection.nodes !== undefined || selection.edges !== undefined;
+  const name = 'name' in selection ? selection.name : idsChanged ? undefined : state.selection.name;
   const next: GraphSelection = {
     nodes: [...(selection.nodes ?? state.selection.nodes)],
     edges: [...(selection.edges ?? state.selection.edges)],
@@ -113,7 +122,8 @@ export function clearSelection(state: GraphViewState): GraphViewState {
   return setSelection(state, { nodes: [], edges: [], name: undefined });
 }
 
-/** Set (or, with `null`, remove) the filter owned by `owner`. Other owners' filters are kept. */
+/** Set (or, with `null`, remove) the filter owned by `owner`. Other owners' filters are kept. The
+ *  filter is copied in, so mutating the caller's object later does not change the state silently. */
 export function setFilter(state: GraphViewState, owner: string, filter: GraphFilter | null): GraphViewState {
   if (filter === null) {
     if (!(owner in state.filters)) return state;
@@ -121,7 +131,7 @@ export function setFilter(state: GraphViewState, owner: string, filter: GraphFil
     return { ...state, filters: rest };
   }
   if (sameFilter(state.filters[owner], filter)) return state;
-  return { ...state, filters: { ...state.filters, [owner]: filter } };
+  return { ...state, filters: { ...state.filters, [owner]: JSON.parse(JSON.stringify(filter)) as GraphFilter } };
 }
 
 /** Remove every filter. */
@@ -131,36 +141,12 @@ export function clearFilters(state: GraphViewState): GraphViewState {
 
 /** Set (or clear, with `null`) the hovered element. */
 export function setHovered(state: GraphViewState, hovered: GraphHover | null): GraphViewState {
-  return sameHover(state.hovered, hovered) ? state : { ...state, hovered };
+  return sameHover(state.hovered, hovered) ? state : { ...state, hovered: hovered && { kind: hovered.kind, id: hovered.id } };
 }
 
 // --- projections -------------------------------------------------------------------------------
 
-/**
- * The one filter every lens honours: the conjunction of all owners' filters (owner order is
- * irrelevant). Node predicates AND together, edge predicates AND together; an owner that omits
- * `edges` keeps the edges induced by its matched nodes, as in a single `GraphFilter`. The mode is
- * `'hide'` when any owner asks to hide, else `'fade'`. Null when nothing filters.
- */
-export function combinedFilter(state: GraphViewState): GraphFilter | null {
-  const owned = Object.keys(state.filters)
-    .sort()
-    .map((k) => state.filters[k]);
-  if (owned.length === 0) return null;
-  if (owned.length === 1) return owned[0];
-  const nodes = owned.map((f) => f.nodes).filter((p): p is FilterPredicate => p !== undefined);
-  const edges = owned.map((f) => f.edges).filter((p): p is FilterPredicate => p !== undefined);
-  const combine = (ps: FilterPredicate[]): FilterPredicate | undefined =>
-    ps.length === 0 ? undefined : ps.length === 1 ? ps[0] : { all: ps };
-  const result: GraphFilter = { mode: owned.some((f) => f.mode === 'hide') ? 'hide' : 'fade' };
-  const n = combine(nodes);
-  const e = combine(edges);
-  if (n) result.nodes = n;
-  if (e) result.edges = e;
-  return result;
-}
-
-/** How a filter is applied to a graph — `applyFilter` from `@zodal/graph-compute` by default. */
+/** How one owner's filter is applied to a graph — `applyFilter` from `@zodal/graph-compute` by default. */
 export type ApplyFilter = (graph: CanonicalGraph, filter: GraphFilter) => FilterResult;
 
 export interface LinkedOptions {
@@ -168,15 +154,70 @@ export interface LinkedOptions {
   applyFilter?: ApplyFilter;
 }
 
-/** The combined filter applied to `graph` (matched ids, fade overlay, counts), or null when nothing
- *  filters. A table lens hides or dims rows from `selection`; a `'hide'` lens draws only it. */
+/** What the shared filters leave of a graph: `selection` holds the ids every owner keeps, `hidden`
+ *  the ids a `'hide'` owner removes, and `overlays` one `'filter'` layer dimming the ids only
+ *  `'fade'` owners drop. */
+export interface LinkedFilterResult extends FilterResult {
+  hidden: GraphSelection;
+}
+
+/**
+ * Apply every owner's filter to `graph` and combine them crossfilter-style: an element is kept only
+ * when EVERY owner keeps it (each owner's own semantics hold, including edges induced by its matched
+ * nodes). An element a `'hide'` owner drops is hidden — and so is an edge with a hidden endpoint; an
+ * element only `'fade'` owners drop is dimmed. Null when nothing filters.
+ */
 export function linkedFilterResult(
   graph: CanonicalGraph,
   state: GraphViewState,
   options: LinkedOptions = {},
-): FilterResult | null {
-  const filter = combinedFilter(state);
-  return filter ? (options.applyFilter ?? computeFilter)(graph, filter) : null;
+): LinkedFilterResult | null {
+  const owners = Object.keys(state.filters).sort();
+  if (owners.length === 0) return null;
+  const apply = options.applyFilter ?? computeFilter;
+  const keptNodes = new Set(graph.nodes.map((n) => n.id));
+  const keptEdges = new Set(graph.edges.map((e) => e.id));
+  const hiddenNodes = new Set<string>();
+  const hiddenEdges = new Set<string>();
+  for (const owner of owners) {
+    const filter = state.filters[owner];
+    const result = apply(graph, filter);
+    const nodes = new Set(result.selection.nodes);
+    const edges = new Set(result.selection.edges);
+    const hides = filter.mode === 'hide';
+    for (const n of graph.nodes) {
+      if (nodes.has(n.id)) continue;
+      keptNodes.delete(n.id);
+      if (hides) hiddenNodes.add(n.id);
+    }
+    for (const e of graph.edges) {
+      if (edges.has(e.id)) continue;
+      keptEdges.delete(e.id);
+      if (hides) hiddenEdges.add(e.id);
+    }
+  }
+  for (const e of graph.edges) {
+    if (hiddenNodes.has(e.source) || hiddenNodes.has(e.target)) {
+      keptEdges.delete(e.id);
+      hiddenEdges.add(e.id);
+    }
+  }
+
+  const dimNodes: Record<string, string> = {};
+  const dimEdges: Record<string, string> = {};
+  for (const n of graph.nodes) if (!keptNodes.has(n.id) && !hiddenNodes.has(n.id)) dimNodes[n.id] = 'dimmed';
+  for (const e of graph.edges) if (!keptEdges.has(e.id) && !hiddenEdges.has(e.id)) dimEdges[e.id] = 'dimmed';
+  const overlays: GraphOverlays = { highlights: [] };
+  if (Object.keys(dimNodes).length > 0 || Object.keys(dimEdges).length > 0) {
+    overlays.highlights.push({ layer: 'filter', nodes: dimNodes, edges: dimEdges });
+  }
+
+  return {
+    selection: { nodes: [...keptNodes], edges: [...keptEdges], name: 'filter' },
+    hidden: { nodes: [...hiddenNodes], edges: [...hiddenEdges] },
+    overlays,
+    counts: { nodes: keptNodes.size, edges: keptEdges.size },
+  };
 }
 
 /** The overlay role each kind of shared state is drawn with. */
@@ -189,10 +230,14 @@ export interface LinkedRoles {
 
 /**
  * The shared state as `GraphOverlays`, ready for any node-link renderer: a `'filter'` layer that
- * dims what the combined filter leaves out (fade mode), a `'selection'` layer (role `'primary'`), and
- * a `'hover'` layer (role `'related'`). Empty layers are omitted, so no state means no overlays.
- * Renderers resolve conflicts by role priority, so a selected node stays primary even when hovered
- * or filtered out.
+ * dims what only `'fade'` owners drop, a `'selection'` layer (role `'primary'`), and a `'hover'`
+ * layer (role `'related'`). Empty layers are omitted, so no state means no overlays.
+ *
+ * Overlays cannot remove elements: draw only what is not in `linkedFilterResult(...).hidden` when an
+ * owner hides. Renderers resolve conflicts by role priority, so a selected node stays primary even
+ * when hovered or dimmed (the selection is kept and marked, never pruned by a filter). A renderer
+ * with a focus mode that fades every element without a role (graph-sigma's `dimUnhighlighted`)
+ * should turn it off for these overlays, which already say what to dim.
  */
 export function linkedOverlays(
   graph: CanonicalGraph,
@@ -200,10 +245,7 @@ export function linkedOverlays(
   options: LinkedOptions & { roles?: LinkedRoles } = {},
 ): GraphOverlays {
   const highlights: OverlayLayer[] = [];
-  const filtered = linkedFilterResult(graph, state, options);
-  for (const layer of filtered?.overlays.highlights ?? []) {
-    if (Object.keys(layer.nodes).length > 0 || Object.keys(layer.edges ?? {}).length > 0) highlights.push(layer);
-  }
+  highlights.push(...(linkedFilterResult(graph, state, options)?.overlays.highlights ?? []));
 
   const selectedRole = options.roles?.selected ?? 'primary';
   const { nodes, edges } = state.selection;
@@ -237,7 +279,8 @@ export interface GraphViewStore {
   setFilter(owner: string, filter: GraphFilter | null): void;
   clearFilters(): void;
   setHovered(hovered: GraphHover | null): void;
-  /** Replace the whole state (e.g. restoring a saved view from a URL). */
+  /** Replace the whole state (e.g. restoring a saved view from a URL). Trusted as given: it is not
+   *  copied or checked against `capabilities` — validate external input before calling it. */
   setState(state: GraphViewState): void;
 }
 

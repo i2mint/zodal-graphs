@@ -10,7 +10,6 @@ import {
   setFilter,
   clearFilters,
   setHovered,
-  combinedFilter,
   linkedFilterResult,
   linkedOverlays,
   createGraphViewStore,
@@ -55,6 +54,7 @@ describe('transitions', () => {
     const s = setHovered(setFilter(setSelection(initGraphViewState(), { nodes: ['a'] }), 'f', people), { kind: 'node', id: 'a' });
     expect(setSelection(s, { nodes: ['a'] })).toBe(s);
     expect(setFilter(s, 'f', { nodes: { field: 'type', op: 'eq', value: 'person' } })).toBe(s);
+    expect(setFilter(s, 'f', { nodes: { value: 'person', op: 'eq', field: 'type' } })).toBe(s); // key order
     expect(setFilter(s, 'other', null)).toBe(s);
     expect(setHovered(s, { kind: 'node', id: 'a' })).toBe(s);
     expect(setActiveView(s, s.activeView)).toBe(s);
@@ -63,10 +63,11 @@ describe('transitions', () => {
     expect(clearSelection(empty)).toBe(empty);
   });
 
-  it('a partial selection keeps the other kind and the name', () => {
+  it('a partial selection keeps the other kind; new ids drop a stale name', () => {
     let s = setSelection(initGraphViewState(), { nodes: ['a'], edges: ['ab'], name: 'scene' });
+    expect(setSelection(s, { name: 'renamed' }).selection.name).toBe('renamed');
     s = setSelection(s, { nodes: ['b', 'c'] });
-    expect(s.selection).toEqual({ nodes: ['b', 'c'], edges: ['ab'], name: 'scene' });
+    expect(s.selection).toEqual({ nodes: ['b', 'c'], edges: ['ab'] });
     expect(clearSelection(s).selection).toEqual({ nodes: [], edges: [] });
   });
 
@@ -75,28 +76,50 @@ describe('transitions', () => {
     expect(Object.keys(s.filters).sort()).toEqual(['facet', 'timeline']);
     s = setFilter(s, 'facet', null);
     expect(Object.keys(s.filters)).toEqual(['timeline']);
+    // copied in: mutating the caller's object later does not change the state
+    const mine: GraphFilter = { nodes: { field: 'type', op: 'eq', value: 'person' } };
+    const t = setFilter(s, 'mine', mine);
+    (mine.nodes as { value: unknown }).value = 'place';
+    expect(t.filters.mine).toEqual(people);
     expect(clearFilters(s).filters).toEqual({});
   });
 });
 
-describe('combinedFilter', () => {
-  it('is null with no filters and the filter itself with one', () => {
-    expect(combinedFilter(initGraphViewState())).toBeNull();
-    expect(combinedFilter(setFilter(initGraphViewState(), 'f', people))).toBe(people);
+describe('linkedFilterResult (crossfilter)', () => {
+  it('is null with no filters', () => {
+    expect(linkedFilterResult(graph, initGraphViewState())).toBeNull();
   });
 
-  it('ANDs the owners (crossfilter) and hides when any owner hides', () => {
-    const s = setFilter(setFilter(initGraphViewState(), 'facet', people), 'timeline', { ...teamX, mode: 'hide' });
-    const f = combinedFilter(s);
-    expect(f?.mode).toBe('hide');
-    expect(f?.nodes).toEqual({ all: [people.nodes, teamX.nodes] });
-    expect(linkedFilterResult(graph, s)?.selection.nodes).toEqual(['a']);
+  it('keeps what every owner keeps', () => {
+    const s = setFilter(setFilter(initGraphViewState(), 'facet', people), 'team', teamX);
+    const r = linkedFilterResult(graph, s);
+    expect(r?.selection.nodes).toEqual(['a']);
+    expect(r?.counts).toEqual({ nodes: 1, edges: 0 });
+  });
+
+  it('an owner with an edge predicate does not undo another owner\'s induced edges', () => {
+    // facet keeps people (a, b) with induced edge ab; the edge owner keeps every edge by id
+    const allEdges: GraphFilter = { edges: { field: 'id', op: 'in', value: ['ab', 'ac'] } };
+    const r = linkedFilterResult(graph, setFilter(setFilter(initGraphViewState(), 'facet', people), 'edges', allEdges));
+    expect(r?.selection.edges).toEqual(['ab']); // ac reaches c, which the facet drops
+    expect(r?.overlays.highlights[0].edges).toEqual({ ac: 'dimmed' });
+  });
+
+  it('a hide owner hides (with edges to hidden nodes) while a fade owner only dims', () => {
+    let s = setFilter(initGraphViewState(), 'facet', { ...people, mode: 'hide' }); // hides c
+    s = setFilter(s, 'team', teamX); // fades b
+    const r = linkedFilterResult(graph, s);
+    expect(r?.hidden).toEqual({ nodes: ['c'], edges: ['ac'] });
+    expect(r?.overlays.highlights[0].nodes).toEqual({ b: 'dimmed' });
+    expect(r?.overlays.highlights[0].edges).toEqual({ ab: 'dimmed' });
+    expect(r?.selection.nodes).toEqual(['a']);
   });
 
   it('accepts another filter engine', () => {
-    const engine = vi.fn(() => ({ selection: { nodes: [], edges: [] }, overlays: { highlights: [] }, counts: { nodes: 0, edges: 0 } }));
-    linkedFilterResult(graph, setFilter(initGraphViewState(), 'f', people), { applyFilter: engine });
+    const engine = vi.fn(() => ({ selection: { nodes: ['a'], edges: [] }, overlays: { highlights: [] }, counts: { nodes: 1, edges: 0 } }));
+    const r = linkedFilterResult(graph, setFilter(initGraphViewState(), 'f', people), { applyFilter: engine });
     expect(engine).toHaveBeenCalledWith(graph, people);
+    expect(r?.selection.nodes).toEqual(['a']);
   });
 });
 
@@ -106,6 +129,7 @@ describe('linkedOverlays', () => {
   });
 
   it('draws filter (dimmed), selection (primary) and hover (related) layers', () => {
+    expect(linkedOverlays(graph, setHovered(initGraphViewState(), { kind: 'node', id: 'a' })).highlights.map((l) => l.layer)).toEqual(['hover']);
     let s = setFilter(initGraphViewState(), 'facet', people);
     s = setSelection(s, { nodes: ['a'], edges: ['ab'] });
     s = setHovered(s, { kind: 'node', id: 'b' });
@@ -143,7 +167,7 @@ describe('createGraphViewStore', () => {
     unsubscribe();
     store.setFilter('f', people);
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(store.getState().filters.f).toBe(people);
+    expect(store.getState().filters.f).toEqual(people);
   });
 
   it('isolates a throwing listener', () => {
