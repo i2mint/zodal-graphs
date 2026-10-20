@@ -52,6 +52,33 @@ const sel = registry.select(graphDef.getCapabilities(), { nodeCount: 50_000, int
 //   (a huge graph forces the viz renderer; editing + typed ports are honestly dropped)
 ```
 
+## Linked views: one shared state for every lens
+
+Selection, filters, hover and the active view live in ONE serializable `GraphViewState`, so a
+lens is a projection of it and brushing in one lens shows in all of them. Filters are owned (one
+per lens or control) and combined with AND, so a timeline brush and a facet filter narrow together.
+
+```ts
+import { createGraphViewStore, linkedOverlays, linkedFilterResult } from '@zodal/graph-ui';
+import { rowSelectionToSelection, selectionToRowSelection } from '@zodal/graph-table/headless';
+import { brushFilter, toTimeline } from '@zodal/graph-timeline/headless';
+
+const view = createGraphViewStore({ capabilities: graphDef.getCapabilities() });
+
+// table lens: TanStack rowSelection <-> the shared selection
+onRowSelectionChange: (next) => view.setSelection(rowSelectionToSelection(next, 'node'));
+rowSelection: selectionToRowSelection(view.getState().selection, 'node');
+
+// timeline lens: a brushed window becomes the timeline's filter
+onBrush: (window) => view.setFilter('timeline', brushFilter(toTimeline(graph), window));
+
+// node-link lens: draw the shared state as overlays (selection primary, filtered-out dimmed, hover related)
+overlays = linkedOverlays(graph, view.getState());
+```
+
+`getState` + `subscribe` plug into React's `useSyncExternalStore`. The pure transitions
+(`setSelection`, `setFilter`, `setActiveView`, …) return the same object when nothing changed.
+
 ## API
 
 | Export | What it does |
@@ -61,6 +88,9 @@ const sel = registry.select(graphDef.getCapabilities(), { nodeCount: 50_000, int
 | predicates: `isTypedPortGraph`, `wantsEditing`, `isExecutable`, `hasProvenance`, `hasIntervals`, `scaleAtMost(n)`, `scaleAtLeast(n)`, `viewIs(v)`, `supportsView(v)` | compose with `allOf` / `anyOf` / `not` |
 | `PRIORITY` | named bands (`FALLBACK` → `OVERRIDE`); `INELIGIBLE` = -1 |
 | `computeGaps` / `CapabilityGap` | the degrade report |
+| `createGraphViewStore({ initial?, capabilities? })` | the shared view store: `getState`, `subscribe`, `setActiveView`, `setSelection`, `setFilter(owner, filter \| null)`, `setHovered`, `clear*`, `setState` |
+| `initGraphViewState`, `setActiveView`, `setSelection`, `clearSelection`, `setFilter`, `clearFilters`, `setHovered` | the same transitions as pure functions over `GraphViewState` |
+| `combinedFilter(state)` · `linkedFilterResult(graph, state)` · `linkedOverlays(graph, state)` | what a lens draws: the AND of all owned filters, its result, and the `GraphOverlays` for node-link |
 
 `resolve()` returns the renderer payload; `select()` adds the `degraded` report; `explain()`
 returns the full ranking (why a renderer won). Ties resolve to the first-registered entry.

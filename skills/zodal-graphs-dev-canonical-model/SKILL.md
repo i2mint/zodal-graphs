@@ -57,7 +57,10 @@ Serialized wire shape = **`nodes_and_links` superset** (linked-compatible):
   capability a renderer might fail to honor has a mirror field here so `@zodal/graph-ui`'s
   degrade report can be complete.
 - `GraphView = 'node-link'|'table'|'matrix'|'timeline'|'form'`. Keep this enum SSOT — it is
-  reused as the `activeView` state field in the table/matrix/form lens (P5).
+  reused as the `activeView` field of `@zodal/graph-ui`'s shared `GraphViewState` (with
+  `selection: GraphSelection`, `filters: Record<owner, GraphFilter>` ANDed by `combinedFilter`, and
+  `hovered`), which every lens reads/writes; `linkedOverlays` draws it for node-link. Lens adapters
+  live with the lens: `rowSelectionToSelection` (graph-table), `brushFilter` (graph-timeline).
 
 `typedPorts` and `scaleClass` are **orthogonal**: WebGL renderers cannot draw ports, so a
 high-`maxComfortableNodes` renderer MUST report `typedPorts:false`.

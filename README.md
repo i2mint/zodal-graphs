@@ -24,7 +24,7 @@ published to npm at `0.1.0`:
 | [`@zodal/graph-timeline`](packages/graph-timeline) | ELAN-style interval-tier timeline — rational time, half-open intervals, Allen's 13 relations |
 
 See [`docs/dev-plan.md`](docs/dev-plan.md) for what's built vs. planned per horizon, and the
-[issues](../../issues) for what's next (e.g. cross-lens brushing/selection, #30).
+[issues](../../issues) for what's next. Cross-lens brushing: `@zodal/graph-ui`'s shared view store (`createGraphViewStore`) links the lenses.
 
 ## Contents
 
