@@ -110,6 +110,9 @@ export interface GraphFilter {
   nodes?: FilterPredicate;
   edges?: FilterPredicate;
   mode?: 'hide' | 'fade';
+  /** What the owner needs to redraw its control from the filter (e.g. a timeline brush's window).
+   *  Plain serializable data, kept with the filter in the view state; evaluators ignore it. */
+  meta?: Record<string, unknown>;
 }
 
 /** Empty presentation state — a convenient starting point. */

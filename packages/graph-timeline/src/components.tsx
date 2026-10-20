@@ -14,10 +14,13 @@
  *
  * Linked views: give it the shared `view` store (`@zodal/graph-ui`'s `createGraphViewStore`) and the
  * brush writes a `brushFilter` for the brushed window under the `'timeline'` owner (clearing the
- * brush removes it; removing the filter elsewhere clears the brush), so every other lens fades or
+ * brush removes it), so every other lens fades or
  * hides what falls outside the window. The timeline in turn draws the shared state: selected
  * annotations are outlined, hovered ones marked, and what OTHER owners' filters drop is dimmed or
- * left out (its own window is shown by the brush, crossfilter style, not by dimming itself).
+ * left out (its own window is shown by the brush, crossfilter style, not by dimming itself). The
+ * brush also follows the store: a `'timeline'` filter restored through `view.setState` (a saved view,
+ * a URL) or written by someone else is redrawn from its `meta.window`, a removed one clears the
+ * brush, and a new `filterOwner` removes the old owner's filter.
  */
 
 import { AxisBottom } from '@visx/axis';
@@ -29,9 +32,9 @@ import { useEffect, useMemo, useRef, type ComponentProps, type ReactElement } fr
 import type { CanonicalGraph } from '@zodal/graph-core';
 import type { GraphViewStore } from '@zodal/graph-ui';
 import { useLinkedView } from '@zodal/graph-ui/react';
-import { brushFilter, type BrushFilterOptions } from './brush.js';
+import { brushFilter, filterWindow, type BrushFilterOptions } from './brush.js';
 import { intersects, interval, type Interval } from './interval.js';
-import { toNumber } from './time.js';
+import { timeEquals, toNumber } from './time.js';
 import { toTimeline, timelineExtent } from './timeline.js';
 
 export interface TimelineMargin {
@@ -49,6 +52,11 @@ type BrushHandle = NonNullable<NonNullable<ComponentProps<typeof Brush>['innerRe
 export const TIMELINE_FILTER_OWNER = 'timeline';
 /** Opacity of an annotation other owners' fade filters drop. */
 const DIMMED_OPACITY = 0.3;
+
+const sameWindow = (a: Interval | null, b: Interval | null): boolean =>
+  a === b || (a !== null && b !== null && timeEquals(a.start, b.start) && timeEquals(a.end, b.end));
+
+const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
 
 /**
  * Convert a visx brush {@link Bounds} (already in the xScale data domain, and SAFE_PIXEL-padded by
@@ -96,17 +104,6 @@ export function TimelineView({
   const linkedOptions = useMemo(() => ({ excludeOwners: [filterOwner] }), [filterOwner]);
   const linked = useLinkedView(graph, view, linkedOptions);
 
-  // Clear the brush when the window's filter is removed by someone else (another lens, a "clear
-  // filters" button) — but not when this brush cleared it, which would reset a drag in progress.
-  const brushRef = useRef<BrushHandle | null>(null);
-  const clearedByBrush = useRef(false);
-  const hasOwnFilter = linked ? filterOwner in linked.state.filters : false;
-  const hadOwnFilter = useRef(hasOwnFilter);
-  useEffect(() => {
-    if (hadOwnFilter.current && !hasOwnFilter && !clearedByBrush.current) brushRef.current?.reset();
-    hadOwnFilter.current = hasOwnFilter;
-    clearedByBrush.current = false;
-  }, [hasOwnFilter]);
   const innerWidth = Math.max(0, width - margin.left - margin.right);
   const innerHeight = Math.max(0, height - margin.top - margin.bottom);
 
@@ -126,13 +123,57 @@ export function TimelineView({
   );
   const laneHeight = yScale.bandwidth();
 
+  // The brush follows its owner's filter in the store: a filter restored through `view.setState`
+  // (a saved view, a URL) or replaced by another writer redraws the brush at the filter's
+  // `meta.window`, and a removed one (or one without a window) clears it. `drawn` is the window the
+  // brush shows; a drag updates it before writing the store, so the store's echo of a drag is a
+  // no-op (no reset mid-gesture). `pending` counts the brush moves made here: visx reports each one
+  // through `onChange`, and those reports must not be written back.
+  const brushRef = useRef<BrushHandle | null>(null);
+  const drawn = useRef<Interval | null>(null);
+  const drawnScale = useRef(xScale);
+  const pending = useRef(0);
+  const ownFilter = linked?.state.filters[filterOwner];
+  const storedWindow = useMemo(() => filterWindow(ownFilter), [ownFilter]);
+  const syncing = linked !== undefined;
+  useEffect(() => {
+    const brush = brushRef.current;
+    if (!syncing || !brush) return;
+    const rescaled = drawnScale.current !== xScale;
+    drawnScale.current = xScale;
+    if (sameWindow(storedWindow, drawn.current) && !(rescaled && storedWindow)) return;
+    drawn.current = storedWindow;
+    pending.current += 1;
+    if (!storedWindow) {
+      brush.reset();
+      return;
+    }
+    const [x0, x1] = [storedWindow.start, storedWindow.end].map((t) => clamp(xScale(toNumber(t)), 0, innerWidth));
+    const start = { x: x0, y: 0 };
+    const end = { x: x1, y: innerHeight };
+    brush.updateBrush((previous) => ({ ...previous, start, end, extent: brush.getExtent(start, end), isBrushing: false }));
+  }, [syncing, storedWindow, xScale, innerWidth, innerHeight]);
+
+  // A new `filterOwner` takes over: the old owner's filter leaves the store, and the brush follows
+  // the new owner's filter (the effect above).
+  const previousOwner = useRef(filterOwner);
+  useEffect(() => {
+    if (previousOwner.current === filterOwner) return;
+    view?.setFilter(previousOwner.current, null);
+    previousOwner.current = filterOwner;
+  }, [filterOwner, view]);
+
   const handleBrush =
     onWindowChange || view
       ? (bounds: Bounds | null) => {
+          if (pending.current > 0) {
+            pending.current -= 1; // the brush reporting a move made from the store: not a user brush
+            return;
+          }
           const brushed = boundsToWindow(bounds);
           onWindowChange?.(brushed);
           if (view) {
-            clearedByBrush.current = brushed === null;
+            drawn.current = brushed;
             view.setFilter(filterOwner, brushed ? brushFilter(model, brushed, brushOptions) : null);
           }
         }
@@ -218,6 +259,9 @@ export function TimelineView({
             height={Math.max(1, innerHeight)}
             brushDirection="horizontal"
             onChange={handleBrush}
+            onBrushStart={() => {
+              pending.current = 0; // a user gesture: nothing of ours is still in flight
+            }}
             innerRef={brushRef}
           />
         ) : null}

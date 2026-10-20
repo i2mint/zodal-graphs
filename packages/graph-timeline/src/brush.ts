@@ -13,11 +13,15 @@
  *   snapshot of the model's annotations. Rebuild it when the graph changes (a node added later
  *   counts as untimed). graph-compute evaluates `in` lists as Sets, so a long brush costs O(1) per
  *   element.
+ *
+ * Either way the filter's `meta.window` records the brushed window ({@link filterWindow} reads it),
+ * so a timeline can redraw its brush from a restored filter (a saved view, a URL).
  */
 
 import type { FilterPredicate, GraphFilter } from '@zodal/graph-core';
 import type { AllenRelation, Interval } from './interval.js';
-import { isInstant } from './interval.js';
+import { interval, isInstant } from './interval.js';
+import type { RationalTime } from './time.js';
 import { annotationsInWindow, annotationsRelated, type TimelineModel } from './timeline.js';
 
 export interface BrushFilterOptions {
@@ -57,8 +61,23 @@ export function brushFilter(model: TimelineModel, window: Interval, options: Bru
     ? { not: { all: [TIER, START, END].map((field) => ({ field, op: 'exists' as const })) } }
     : { not: { field: 'id', op: 'in', value: model.annotations.map((a) => a.id) } };
   const nodes: FilterPredicate = options.keepUntimed === false ? inWindow : { any: [inWindow, untimed] };
-  return { nodes, mode: options.mode ?? 'fade' };
+  return { nodes, mode: options.mode ?? 'fade', meta: { window: { start: { ...window.start }, end: { ...window.end } } } };
 }
+
+/** The brushed window a `brushFilter` recorded in its `meta`, or null when the filter has none (or
+ *  it is malformed). The timeline redraws its brush from this when the filter is restored. */
+export function filterWindow(filter: GraphFilter | undefined): Interval | null {
+  const window = (filter?.meta as { window?: { start?: unknown; end?: unknown } } | undefined)?.window;
+  if (!window || !isTime(window.start) || !isTime(window.end)) return null;
+  try {
+    return interval(window.start, window.end);
+  } catch {
+    return null;
+  }
+}
+
+const isTime = (t: unknown): t is RationalTime =>
+  typeof t === 'object' && t !== null && typeof (t as RationalTime).v === 'number' && typeof (t as RationalTime).r === 'number';
 
 /** Can the window be written as plain-number predicates without losing exactness? */
 function numericWindow(model: TimelineModel, window: Interval): boolean {
