@@ -3,11 +3,11 @@
  * Render tests for the table + matrix React components (Testing Library over happy-dom).
  */
 
-import { afterEach, describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import type { CanonicalGraph } from '@zodal/graph-core';
 import { nodeId, edgeId } from '@zodal/graph-core';
-import { GraphTable, GraphMatrix } from '../src/index.js';
+import { GraphTable, GraphMatrix, matrixTargetToSelection } from '../src/index.js';
 
 afterEach(cleanup);
 
@@ -127,5 +127,38 @@ describe('<GraphMatrix>', () => {
     const empty: CanonicalGraph = { directed: true, multigraph: false, nodes: [], edges: [], graph: {} };
     const { container } = render(<GraphMatrix graph={empty} />);
     expect(container.querySelector('.zodal-matrix--empty')).not.toBeNull();
+  });
+});
+
+describe('<GraphMatrix> linked selection', () => {
+  it('highlights a selected node\'s bands and a selected edge\'s cell', () => {
+    const { container } = render(
+      <GraphMatrix graph={graph()} seriation="none" selection={{ nodes: ['a'], edges: ['e2'] }} />,
+    );
+    const cells = [...container.querySelectorAll('.zodal-matrix__cell')];
+    // row 0 and column 0 belong to a: 3 + 3 - 1 shared = 5 band cells
+    expect(cells.filter((c) => c.classList.contains('zodal-matrix__cell--band'))).toHaveLength(5);
+    const selected = cells.filter((c) => c.classList.contains('zodal-matrix__cell--selected'));
+    expect(selected.map((c) => c.getAttribute('title'))).toEqual(['b → c: 1']);
+  });
+
+  it('reports cell and band hits; the adapter turns them into the shared selection', () => {
+    const onSelect = vi.fn();
+    const g = graph();
+    const { container } = render(<GraphMatrix graph={g} seriation="none" labels onSelect={onSelect} />);
+    fireEvent.click(container.querySelector('[title="a → b: 1"]') as HTMLElement);
+    expect(onSelect.mock.calls[0][0]).toEqual({ kind: 'cell', source: 'a', target: 'b' });
+    expect(matrixTargetToSelection(g, onSelect.mock.calls[0][0])).toEqual({ nodes: [], edges: ['e1'] });
+    const bands = [...container.querySelectorAll('button.zodal-matrix__band--row')];
+    expect(bands.map((b) => b.textContent)).toEqual(['a', 'b', 'c']);
+    fireEvent.click(bands[2]);
+    expect(onSelect.mock.calls[1][0]).toEqual({ kind: 'row', node: 'c' });
+    expect(container.querySelectorAll('button.zodal-matrix__band--column')).toHaveLength(3);
+  });
+
+  it('without onSelect or labels it stays a static image', () => {
+    const { container } = render(<GraphMatrix graph={graph()} />);
+    expect(container.querySelector('.zodal-matrix')?.getAttribute('role')).toBe('img');
+    expect(container.querySelector('.zodal-matrix__band')).toBeNull();
   });
 });

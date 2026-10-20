@@ -5,7 +5,9 @@
  * `<GraphTable>` drives TanStack Table from `toNodeRows`/`toEdgeRows` + `inferColumns`, sortable from
  * keyboard-accessible headers, sorting on the SAME value it displays (so object/mixed cells sort
  * transitively). `<GraphMatrix>` draws the seriated adjacency matrix as a heat-cell grid (a diverging
- * scale: hue ← sign, opacity ← |weight| / max-magnitude). Both are presentational and themeable via
+ * scale: hue ← sign, opacity ← |weight| / max-magnitude); given a shared `selection` it highlights the
+ * selected nodes' bands and edges' cells, and `onSelect` reports band/cell hits (`MatrixTarget`, for
+ * `matrixTargetToSelection`). Both are presentational and themeable via
  * class names (`zodal-table`, `zodal-matrix`). Pass a NEW `graph` object to re-render (props are
  * memoised on identity — mutating the graph in place won't update).
  */
@@ -20,9 +22,11 @@ import {
   type SortingState,
 } from '@tanstack/react-table';
 import { useMemo, useState, type ReactElement } from 'react';
-import type { CanonicalGraph } from '@zodal/graph-core';
+import type { CanonicalGraph, GraphSelection } from '@zodal/graph-core';
 import { inferColumns, toEdgeRows, toNodeRows, type EdgeRow, type NodeRow } from './rows.js';
 import { reorderMatrix, seriate, toAdjacencyMatrix, type SeriationMethod } from './matrix.js';
+import { matrixHighlight, type MatrixTarget } from './matrix-selection.js';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 
 type Row = NodeRow | EdgeRow;
 const SORT_GLYPH: Record<string, string> = { asc: ' ▲', desc: ' ▼' };
@@ -122,6 +126,13 @@ export interface GraphMatrixProps {
   /** Heat colour (`r, g, b`) for negative weights (default a red). */
   negativeColor?: string;
   className?: string;
+  /** The shared selection to highlight: a selected node's row and column band, a selected edge's cell. */
+  selection?: GraphSelection;
+  /** Called with what was clicked: a cell, or (with `labels`) a row/column band. Translate it with
+   *  `matrixTargetToSelection` and write it to the shared view store. */
+  onSelect?: (target: MatrixTarget, event: ReactMouseEvent) => void;
+  /** Render row and column header bands (node ids) — buttons when `onSelect` is given. Default false. */
+  labels?: boolean;
 }
 
 /** The seriated adjacency matrix as a heat-cell grid (diverging: hue ← sign, opacity ← |weight|/max). */
@@ -134,6 +145,9 @@ export function GraphMatrix({
   color = '31, 119, 180',
   negativeColor = '214, 39, 40',
   className,
+  selection,
+  onSelect,
+  labels = false,
 }: GraphMatrixProps): ReactElement {
   const matrix = useMemo(() => {
     const base = toAdjacencyMatrix(graph, { weight, undirected });
@@ -144,6 +158,11 @@ export function GraphMatrix({
   const max = useMemo(
     () => matrix.cells.reduce((m, row) => row.reduce((n, v) => Math.max(n, Math.abs(v)), m), 0),
     [matrix],
+  );
+
+  const highlight = useMemo(
+    () => (selection ? matrixHighlight(matrix, graph, selection, { undirected }) : null),
+    [matrix, graph, selection, undirected],
   );
 
   if (matrix.order.length > MATRIX_WARN_NODES && typeof console !== 'undefined') {
@@ -157,36 +176,77 @@ export function GraphMatrix({
     return <div className={cx('zodal-matrix', 'zodal-matrix--empty', className)}>Empty graph.</div>;
   }
 
+  const n = matrix.order.length;
+  const band = (kind: 'row' | 'column', node: string, i: number): ReactElement => {
+    const className = cx(
+      'zodal-matrix__band',
+      `zodal-matrix__band--${kind}`,
+      highlight?.bands[i] ? 'zodal-matrix__band--selected' : undefined,
+    );
+    // A column band is one cell wide, so its label runs vertically.
+    const style = kind === 'column' ? { writingMode: 'vertical-rl' as const, width: cellSize } : undefined;
+    return onSelect ? (
+      <button key={`${kind}-${node}`} type="button" className={className} style={style} aria-pressed={highlight?.bands[i] ?? false} onClick={(e) => onSelect({ kind, node }, e)}>
+        {node}
+      </button>
+    ) : (
+      <div key={`${kind}-${node}`} className={className} style={style}>
+        {node}
+      </div>
+    );
+  };
+
+  const cells = matrix.cells.map((row, i) =>
+    row.map((value, j) => {
+      const inBand = highlight ? highlight.bands[i] || highlight.bands[j] : false;
+      const selected = highlight?.cells[i][j] ?? false;
+      return (
+        <div
+          key={`${i}-${j}`}
+          className={cx(
+            'zodal-matrix__cell',
+            inBand ? 'zodal-matrix__cell--band' : undefined,
+            selected ? 'zodal-matrix__cell--selected' : undefined,
+          )}
+          title={`${matrix.order[i]} → ${matrix.order[j]}: ${value}`}
+          data-value={value}
+          onClick={onSelect ? (e) => onSelect({ kind: 'cell', source: matrix.order[i], target: matrix.order[j] }, e) : undefined}
+          style={{
+            width: cellSize,
+            height: cellSize,
+            boxSizing: 'border-box',
+            outline: selected ? '2px solid currentColor' : '1px solid rgba(0,0,0,0.06)',
+            boxShadow: inBand ? 'inset 0 0 0 9999px rgba(0,0,0,0.06)' : undefined,
+            cursor: onSelect ? 'pointer' : undefined,
+            background:
+              value !== 0 && max > 0
+                ? `rgba(${value < 0 ? negativeColor : color}, ${Math.abs(value) / max})`
+                : 'transparent',
+          }}
+        />
+      );
+    }),
+  );
+
   return (
     <div
       className={cx('zodal-matrix', className)}
-      role="img"
-      aria-label={`adjacency matrix, ${matrix.order.length} nodes`}
+      role={onSelect || labels ? 'group' : 'img'}
+      aria-label={`adjacency matrix, ${n} nodes`}
       style={{
         display: 'grid',
-        gridTemplateColumns: `repeat(${matrix.order.length}, ${cellSize}px)`,
+        gridTemplateColumns: labels ? `max-content repeat(${n}, ${cellSize}px)` : `repeat(${n}, ${cellSize}px)`,
         width: 'max-content',
       }}
     >
-      {matrix.cells.map((row, i) =>
-        row.map((value, j) => (
-          <div
-            key={`${i}-${j}`}
-            className="zodal-matrix__cell"
-            title={`${matrix.order[i]} → ${matrix.order[j]}: ${value}`}
-            data-value={value}
-            style={{
-              width: cellSize,
-              height: cellSize,
-              boxSizing: 'border-box',
-              outline: '1px solid rgba(0,0,0,0.06)',
-              background:
-                value !== 0 && max > 0
-                  ? `rgba(${value < 0 ? negativeColor : color}, ${Math.abs(value) / max})`
-                  : 'transparent',
-            }}
-          />
-        )),
+      {labels ? (
+        <>
+          <div className="zodal-matrix__corner" />
+          {matrix.order.map((id, j) => band('column', id, j))}
+          {cells.map((row, i) => [band('row', matrix.order[i], i), ...row])}
+        </>
+      ) : (
+        cells
       )}
     </div>
   );

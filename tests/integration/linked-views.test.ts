@@ -5,12 +5,22 @@
  *   table rows selected → store.setSelection → linkedOverlays marks them 'primary' for node-link
  *   timeline window brushed → store.setFilter('timeline') → every lens sees the same filter
  *   view switch → selection and filters survive
+ *   matrix cell clicked → store.setSelection → the table and the matrix both show it
  */
 
 import { describe, it, expect } from 'vitest';
 import type { CanonicalGraph } from '@zodal/graph-core';
 import { createGraphViewStore, linkedOverlays, linkedFilterResult } from '@zodal/graph-ui';
-import { rowSelectionToSelection, selectionToRowSelection, switchViewChecked, toNodeRows } from '@zodal/graph-table/headless';
+import {
+  formTarget,
+  matrixHighlight,
+  matrixTargetToSelection,
+  rowSelectionToSelection,
+  selectionToRowSelection,
+  switchViewChecked,
+  toAdjacencyMatrix,
+  toNodeRows,
+} from '@zodal/graph-table/headless';
 import { brushFilter, interval, toTimeline } from '@zodal/graph-timeline/headless';
 
 const graph = {
@@ -63,5 +73,17 @@ describe('linked views', () => {
     // graph-table's view helpers work on the shared state as-is (it IS a ViewState)
     const caps = { views: ['node-link', 'table'] } as Parameters<typeof switchViewChecked>[0];
     expect(switchViewChecked(caps, store.getState(), 'node-link').selection).toBe(before.selection);
+  });
+
+  it('a matrix hit selects for every lens, and the matrix highlights the shared selection', () => {
+    const matrix = toAdjacencyMatrix(graph);
+    store.setSelection(matrixTargetToSelection(graph, { kind: 'row', node: 'alice' }));
+    expect(selectionToRowSelection(store.getState().selection, 'node')).toEqual({ alice: true });
+    expect(formTarget(store.getState().selection)).toBe('alice');
+    store.setSelection(matrixTargetToSelection(graph, { kind: 'cell', source: 'alice', target: 'w3' }));
+    expect(store.getState().selection.edges).toEqual(['a-w3']);
+    const highlight = matrixHighlight(matrix, graph, store.getState().selection);
+    expect(highlight.cells[matrix.order.indexOf('alice')][matrix.order.indexOf('w3')]).toBe(true);
+    expect(highlight.bands.some(Boolean)).toBe(false);
   });
 });
