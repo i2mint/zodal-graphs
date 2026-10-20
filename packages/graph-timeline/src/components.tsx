@@ -262,6 +262,9 @@ export function TimelineView({
             width={Math.max(1, innerWidth)}
             height={Math.max(1, innerHeight)}
             brushDirection="horizontal"
+            // The brush sits in the margin-translated Group, but visx measures the pointer against
+            // the <svg>: without the margin a drag lands `margin.left` px (in time units) too late.
+            margin={margin}
             onChange={handleBrush}
             onBrushStart={() => {
               pending.current = 0; // a user gesture: nothing of ours is still in flight
