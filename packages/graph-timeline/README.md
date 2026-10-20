@@ -55,6 +55,13 @@ Tiers become **labelled lanes** (`scaleBand`), annotations become time-positione
 that reports back as a rational-time `Interval` via `onWindowChange`. Install the visx peers:
 `pnpm add @zodal/graph-timeline @visx/scale @visx/axis @visx/brush @visx/group react`.
 
+**Linked views:** `<TimelineView graph={graph} view={store} />` with `@zodal/graph-ui`'s shared view
+store writes the brushed window as `brushFilter(model, window)` under the `'timeline'` filter owner
+(`filterOwner` / `brushOptions` to change), so every other lens fades or hides what falls outside it;
+clearing the brush removes the filter, and removing it elsewhere clears the brush. The timeline
+draws the shared selection (outlined), hover, and the OTHER owners' filters (its own window is shown
+by the brush, not by dimming itself).
+
 ## Scope
 
 **Built + tested:** rational `{v,r}` time (NaN-rejecting, sample-accurate), half-open intervals,

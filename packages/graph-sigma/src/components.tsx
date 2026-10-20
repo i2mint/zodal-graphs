@@ -12,11 +12,18 @@
  * init); when Sigma fails to initialise (e.g. a browser/container with no usable WebGL context) it
  * degrades to an error overlay rather than throwing. (This is a client-only component — `sigma`
  * references WebGL globals at import, so don't import it in a non-DOM server runtime.)
+ *
+ * Linked views: give it the shared `view` store (`@zodal/graph-ui`'s `createGraphViewStore`) and it
+ * draws `linkedOverlays` (on top of any `overlays` passed), leaves out what a `'hide'` filter removes,
+ * and writes back: a click on a node or edge selects it (shift-click toggles it), a click on the
+ * empty stage clears the selection, and hovering a node or edge sets the shared hover.
  */
 
 import Sigma from 'sigma';
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { CanonicalGraph, GraphOverlays } from '@zodal/graph-core';
+import type { GraphViewStore } from '@zodal/graph-ui';
+import { useLinkedView } from '@zodal/graph-ui/react';
 import { toGraphology } from '@zodal/graph-core/graphology';
 import { edgeOverlayStyle, nodeOverlayStyle, type OverlayStyleOptions } from './overlay-style.js';
 import { resolveNodeRenderStyle } from './node-style.js';
@@ -25,13 +32,28 @@ export interface SigmaViewProps {
   graph: CanonicalGraph;
   overlays?: GraphOverlays;
   styleOptions?: OverlayStyleOptions;
+  /** The shared view store (linked views): draw its state and write clicks/hover back to it. */
+  view?: GraphViewStore;
 }
 
-export function SigmaView({ graph, overlays, styleOptions }: SigmaViewProps): ReactElement {
+/** A sigma pointer event's original DOM event: shift marks an additive (toggle) pick. */
+const isAdditive = (payload: { event: { original: MouseEvent | TouchEvent } }): boolean => payload.event.original.shiftKey;
+
+export function SigmaView({ graph, overlays, styleOptions, view }: SigmaViewProps): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const sigmaRef = useRef<Sigma | null>(null);
+  // Bumped when an instance is created, so the effects below re-apply to the NEW instance.
+  const [instance, setInstance] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const isEmpty = graph.nodes.length === 0;
+  const linked = useLinkedView(graph, view);
+  // The host's overlays first, the shared state's on top (roles resolve by priority, not order).
+  const drawn = useMemo<GraphOverlays | undefined>(() => {
+    if (!linked || linked.overlays.highlights.length === 0) return overlays;
+    if (!overlays) return linked.overlays;
+    return { highlights: [...overlays.highlights, ...linked.overlays.highlights] };
+  }, [overlays, linked]);
+  const hidden = linked?.hidden;
 
   // Create the Sigma instance ONCE per graph — overlay changes must not reset the camera.
   useEffect(() => {
@@ -74,24 +96,61 @@ export function SigmaView({ graph, overlays, styleOptions }: SigmaViewProps): Re
       return;
     }
     sigmaRef.current = renderer;
+    setInstance((n) => n + 1);
     return () => {
       renderer.kill();
       sigmaRef.current = null;
     };
   }, [graph, isEmpty]);
 
+  // Pointer → shared state. Re-wired when the store or the instance changes, never rebuilding sigma.
+  useEffect(() => {
+    const renderer = sigmaRef.current;
+    if (!renderer || !view) return;
+    renderer.setSetting('enableEdgeEvents', true);
+    const handlers = {
+      clickNode: (p: { node: string; event: { original: MouseEvent | TouchEvent } }) =>
+        view.pick({ kind: 'node', id: p.node }, isAdditive(p)),
+      clickEdge: (p: { edge: string; event: { original: MouseEvent | TouchEvent } }) =>
+        view.pick({ kind: 'edge', id: p.edge }, isAdditive(p)),
+      clickStage: () => view.clearSelection(),
+      enterNode: (p: { node: string }) => view.setHovered({ kind: 'node', id: p.node }),
+      leaveNode: () => view.setHovered(null),
+      enterEdge: (p: { edge: string }) => view.setHovered({ kind: 'edge', id: p.edge }),
+      leaveEdge: () => view.setHovered(null),
+    };
+    for (const [event, handler] of Object.entries(handlers)) renderer.on(event as never, handler as never);
+    return () => {
+      for (const [event, handler] of Object.entries(handlers)) renderer.off(event as never, handler as never);
+      renderer.setSetting('enableEdgeEvents', false);
+    };
+  }, [view, instance]);
+
   // Apply overlays/styling on the EXISTING instance (no rebuild → camera preserved). NB: pass
   // referentially-stable `overlays`/`styleOptions` (memoize them) — a new identity each render
   // re-runs setSetting+refresh; a mutated-in-place object won't re-run at all.
+  // With `view`, the shared state changes these on every selection/hover/filter change.
   useEffect(() => {
     const renderer = sigmaRef.current;
     if (!renderer) return;
-    const styleNode = overlays ? nodeOverlayStyle(overlays, styleOptions) : undefined;
-    const styleEdge = overlays ? edgeOverlayStyle(overlays, styleOptions) : undefined;
-    renderer.setSetting('nodeReducer', styleNode ? (node, data) => ({ ...data, ...styleNode(node) }) : null);
-    renderer.setSetting('edgeReducer', styleEdge ? (edge, data) => ({ ...data, ...styleEdge(edge) }) : null);
+    const styleNode = drawn ? nodeOverlayStyle(drawn, styleOptions) : undefined;
+    const styleEdge = drawn ? edgeOverlayStyle(drawn, styleOptions) : undefined;
+    const hideNodes = hidden && hidden.nodes.size > 0 ? hidden.nodes : undefined;
+    const hideEdges = hidden && hidden.edges.size > 0 ? hidden.edges : undefined;
+    renderer.setSetting(
+      'nodeReducer',
+      styleNode || hideNodes
+        ? (node, data) => ({ ...data, ...styleNode?.(node), ...(hideNodes?.has(node) ? { hidden: true } : {}) })
+        : null,
+    );
+    renderer.setSetting(
+      'edgeReducer',
+      styleEdge || hideEdges
+        ? (edge, data) => ({ ...data, ...styleEdge?.(edge), ...(hideEdges?.has(edge) ? { hidden: true } : {}) })
+        : null,
+    );
     renderer.refresh();
-  }, [overlays, styleOptions]);
+  }, [drawn, hidden, styleOptions, instance]);
 
   return (
     <div className="zodal-sigma-view" style={{ position: 'relative', width: '100%', height: '100%' }}>

@@ -8,7 +8,13 @@
  * scale: hue ← sign, opacity ← |weight| / max-magnitude); given a shared `selection` it highlights the
  * selected nodes' bands and edges' cells, and `onSelect` reports band/cell hits (`MatrixTarget`, for
  * `matrixTargetToSelection`). Both are presentational and themeable via
- * class names (`zodal-table`, `zodal-matrix`). Pass a NEW `graph` object to re-render (props are
+ * class names (`zodal-table`, `zodal-matrix`).
+ *
+ * Linked views: give either lens the shared `view` store (`@zodal/graph-ui`'s `createGraphViewStore`)
+ * and it reads and writes the state every other lens shares. `<GraphTable view>` adds a selection
+ * checkbox column bound to the shared selection, leaves out the rows a `'hide'` filter removes, dims
+ * the rows only `'fade'` filters drop, and reports row hover; `<GraphMatrix view>` highlights the
+ * shared selection and writes its band/cell clicks back. Pass a NEW `graph` object to re-render (props are
  * memoised on identity — mutating the graph in place won't update).
  */
 
@@ -21,14 +27,21 @@ import {
   type Row as TableRow,
   type SortingState,
 } from '@tanstack/react-table';
-import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactElement } from 'react';
 import type { CanonicalGraph, GraphSelection } from '@zodal/graph-core';
+import type { GraphViewStore } from '@zodal/graph-ui';
+import { useGraphView, useLinkedView } from '@zodal/graph-ui/react';
 import { inferColumns, toEdgeRows, toNodeRows, type EdgeRow, type NodeRow } from './rows.js';
 import { reorderMatrix, seriate, toAdjacencyMatrix, type SeriationMethod } from './matrix.js';
-import { matrixHighlight, type MatrixTarget } from './matrix-selection.js';
+import { matrixHighlight, matrixTargetToSelection, type MatrixTarget } from './matrix-selection.js';
+import { rowSelectionToSelection, selectionToRowSelection, type RowSelectionState } from './selection.js';
 
 type Row = NodeRow | EdgeRow;
 const SORT_GLYPH: Record<string, string> = { asc: ' ▲', desc: ' ▼' };
+/** The selection column's id (not a field name: field columns come from `inferColumns`). */
+const SELECT_COLUMN = '__select';
+/** Opacity of a row only `'fade'` filters drop (dimmed, not removed). */
+const DIMMED_OPACITY = 0.4;
 /** Un-virtualized matrices render n² DOM nodes; warn past this (the registry caps comfort at 2000). */
 const MATRIX_WARN_NODES = 200;
 
@@ -37,47 +50,99 @@ export interface GraphTableProps {
   /** Tabulate the graph's `'nodes'` (default) or `'edges'`. */
   of?: 'nodes' | 'edges';
   className?: string;
+  /** The shared view store (linked views): the table shows and writes the shared selection through
+   *  a checkbox column, leaves out rows a `'hide'` filter removes, dims rows only `'fade'` filters
+   *  drop, and sets the shared hover on row hover. */
+  view?: GraphViewStore;
+  /** With `view`, show the selection checkbox column. Default true. */
+  selectable?: boolean;
 }
 
 /** A sortable table of a graph's nodes or edges (TanStack Table over the headless row shaping). */
-export function GraphTable({ graph, of = 'nodes', className }: GraphTableProps): ReactElement {
-  const rows = useMemo<Row[]>(() => (of === 'edges' ? toEdgeRows(graph) : toNodeRows(graph)), [graph, of]);
-  const columns = useMemo<ColumnDef<Row>[]>(
-    () =>
-      inferColumns(rows).map((col) => ({
-        id: col.id,
-        // accessorFn (not accessorKey): a collision-renamed key like `data.id` is a literal flat key,
-        // and accessorKey would mis-read it as a nested path (`row.data.id`).
-        accessorFn: (row) => (row as Record<string, unknown>)[col.id],
-        header: col.header,
-        cell: (info) => formatCell(info.getValue()),
-        // Sort on the SAME value we display so object/mixed cells sort transitively (TanStack's auto
-        // comparator would compare the raw object refs — non-transitive, meaningless order).
-        sortingFn: (a: TableRow<Row>, b: TableRow<Row>, id: string) => compareCells(a.getValue(id), b.getValue(id)),
-      })),
-    [rows],
+export function GraphTable({ graph, of = 'nodes', className, view, selectable = true }: GraphTableProps): ReactElement {
+  const kind = of === 'edges' ? 'edge' : 'node';
+  const linked = useLinkedView(graph, view);
+  const allRows = useMemo<Row[]>(() => (of === 'edges' ? toEdgeRows(graph) : toNodeRows(graph)), [graph, of]);
+  const hiddenIds = linked ? (kind === 'node' ? linked.hidden.nodes : linked.hidden.edges) : undefined;
+  const rows = useMemo<Row[]>(
+    () => (hiddenIds && hiddenIds.size > 0 ? allRows.filter((row) => !hiddenIds.has(rowId(row))) : allRows),
+    [allRows, hiddenIds],
   );
+  const withSelection = view !== undefined && selectable;
+  const columns = useMemo<ColumnDef<Row>[]>(() => {
+    // Columns come from ALL rows, so a filter hiding rows does not drop or reshuffle columns.
+    const fields: ColumnDef<Row>[] = inferColumns(allRows).map((col) => ({
+      id: col.id,
+      // accessorFn (not accessorKey): a collision-renamed key like `data.id` is a literal flat key,
+      // and accessorKey would mis-read it as a nested path (`row.data.id`).
+      accessorFn: (row) => (row as Record<string, unknown>)[col.id],
+      header: col.header,
+      cell: (info) => formatCell(info.getValue()),
+      // Sort on the SAME value we display so object/mixed cells sort transitively (TanStack's auto
+      // comparator would compare the raw object refs — non-transitive, meaningless order).
+      sortingFn: (a: TableRow<Row>, b: TableRow<Row>, id: string) => compareCells(a.getValue(id), b.getValue(id)),
+    }));
+    if (!withSelection) return fields;
+    const select: ColumnDef<Row> = {
+      id: SELECT_COLUMN,
+      enableSorting: false,
+      header: ({ table }) => (
+        <Checkbox
+          label={`Select all ${of}`}
+          checked={table.getIsAllRowsSelected()}
+          indeterminate={table.getIsSomeRowsSelected()}
+          onChange={table.getToggleAllRowsSelectedHandler()}
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox label={`Select ${row.id}`} checked={row.getIsSelected()} onChange={row.getToggleSelectedHandler()} />
+      ),
+    };
+    return [select, ...fields];
+  }, [allRows, withSelection, of]);
   const [sorting, setSorting] = useState<SortingState>([]);
+  const selection = linked?.state.selection;
+  const rowSelection = useMemo<RowSelectionState>(
+    () => (selection ? selectionToRowSelection(selection, kind) : {}),
+    [selection, kind],
+  );
   const table = useReactTable({
     data: rows,
     columns,
-    state: { sorting },
+    state: { sorting, rowSelection },
     onSortingChange: setSorting,
-    getRowId: (row) => String((row as Record<string, unknown>).id ?? ''), // React key = node/edge id, stable across sorts
+    enableRowSelection: withSelection,
+    // TanStack's next rowSelection keeps ids it does not list (hidden rows), so a hidden selected
+    // row stays selected; only this table's kind is written, so the other kind is left alone.
+    onRowSelectionChange: (updater) => {
+      if (!view) return;
+      const next = typeof updater === 'function' ? updater(rowSelection) : updater;
+      view.setSelection(rowSelectionToSelection(next, kind));
+    },
+    getRowId: rowId, // React key = node/edge id, stable across sorts
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   });
 
-  if (rows.length === 0) {
+  if (allRows.length === 0) {
     return <div className={cx('zodal-table', 'zodal-table--empty', className)}>No {of} to show.</div>;
   }
 
+  const kept = linked?.kept ? (kind === 'node' ? linked.kept.nodes : linked.kept.edges) : undefined;
+  const hovered = linked?.state.hovered;
   return (
     <table className={cx('zodal-table', className)}>
       <thead>
         {table.getHeaderGroups().map((group) => (
           <tr key={group.id}>
             {group.headers.map((header) => {
+              if (!header.column.getCanSort()) {
+                return (
+                  <th key={header.id} scope="col">
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                  </th>
+                );
+              }
               const sorted = header.column.getIsSorted();
               const toggle = header.column.getToggleSortingHandler();
               return (
@@ -99,17 +164,61 @@ export function GraphTable({ graph, of = 'nodes', className }: GraphTableProps):
         ))}
       </thead>
       <tbody>
-        {table.getRowModel().rows.map((row) => (
-          <tr key={row.id}>
-            {row.getVisibleCells().map((cell) => (
-              <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
-            ))}
-          </tr>
-        ))}
+        {table.getRowModel().rows.map((row) => {
+          const selected = row.getIsSelected();
+          // A selected row stays at full strength under a fade filter (selection outranks dimming).
+          const dimmed = kept !== undefined && !kept.has(row.id) && !selected;
+          const isHovered = hovered?.kind === kind && hovered.id === row.id;
+          return (
+            <tr
+              key={row.id}
+              className={cx(
+                'zodal-table__row',
+                selected && 'zodal-table__row--selected',
+                dimmed && 'zodal-table__row--dimmed',
+                isHovered && 'zodal-table__row--hovered',
+              )}
+              data-selected={selected || undefined}
+              data-dimmed={dimmed || undefined}
+              style={dimmed ? { opacity: DIMMED_OPACITY } : undefined}
+              {...(view
+                ? {
+                    onMouseEnter: () => view.setHovered({ kind, id: row.id }),
+                    onMouseLeave: () => view.setHovered(null),
+                  }
+                : {})}
+            >
+              {row.getVisibleCells().map((cell) => (
+                <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+              ))}
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
 }
+
+/** A labelled checkbox whose `indeterminate` state (a DOM property, not an attribute) is kept in sync. */
+function Checkbox({
+  label,
+  checked,
+  indeterminate = false,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  indeterminate?: boolean;
+  onChange: (event: unknown) => void;
+}): ReactElement {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate && !checked;
+  }, [indeterminate, checked]);
+  return <input ref={ref} type="checkbox" className="zodal-table__select" aria-label={label} checked={checked} onChange={onChange} />;
+}
+
+const rowId = (row: Row): string => String((row as Record<string, unknown>).id ?? '');
 
 export interface GraphMatrixProps {
   graph: CanonicalGraph;
@@ -132,6 +241,9 @@ export interface GraphMatrixProps {
   onSelect?: (target: MatrixTarget, event: ReactMouseEvent | ReactKeyboardEvent) => void;
   /** Render row and column header bands (node ids) — buttons when `onSelect` is given. Default false. */
   labels?: boolean;
+  /** The shared view store (linked views): highlights the shared selection and writes band/cell
+   *  clicks back to it. An explicit `selection` / `onSelect` takes precedence. */
+  view?: GraphViewStore;
 }
 
 /** The seriated adjacency matrix as a heat-cell grid (diverging: hue ← sign, opacity ← |weight|/max). */
@@ -147,7 +259,11 @@ export function GraphMatrix({
   selection,
   onSelect,
   labels = false,
+  view,
 }: GraphMatrixProps): ReactElement {
+  const shared = useGraphView(view);
+  selection ??= shared?.selection;
+  onSelect ??= view ? (target) => view.setSelection(matrixTargetToSelection(graph, target, { undirected })) : undefined;
   const matrix = useMemo(() => {
     const base = toAdjacencyMatrix(graph, { weight, undirected });
     return seriation === 'none' ? base : reorderMatrix(base, seriate(base, seriation));

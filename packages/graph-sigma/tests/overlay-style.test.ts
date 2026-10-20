@@ -36,6 +36,18 @@ describe('nodeOverlayStyle', () => {
     expect(style('z')).toEqual({});
   });
 
+  it('a dimmed-only layer (a fade filter) or a lone hover does not turn focus mode on', () => {
+    const faded = nodeOverlayStyle(overlays([{ layer: 'filter', nodes: { d: 'dimmed' } }]));
+    expect(faded('kept')).toEqual({}); // kept nodes keep their own colour, brighter than the dimmed
+    expect(edgeOverlayStyle(overlays([{ layer: 'filter', nodes: { d: 'dimmed' } }]))('e')).toEqual({});
+    const hovered = nodeOverlayStyle(overlays([{ layer: 'hover', nodes: { h: 'related' } }]));
+    expect(hovered('h').highlighted).toBe(true);
+    expect(hovered('other')).toEqual({});
+    // a real highlight next to them still focuses
+    const selected = nodeOverlayStyle(overlays([{ layer: 'filter', nodes: { d: 'dimmed' } }, { layer: 'selection', nodes: { s: 'primary' } }]));
+    expect(selected('other').color).toBe(DIM);
+  });
+
   it('treats a `dimmed` role as not-highlighted (z-below), distinct from focus-dim', () => {
     const style = nodeOverlayStyle(overlays([{ layer: 'x', nodes: { a: 'primary', d: 'dimmed' } }]));
     expect(style('d').highlighted).toBe(false);

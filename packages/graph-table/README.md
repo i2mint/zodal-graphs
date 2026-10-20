@@ -29,6 +29,12 @@ import { GraphTable, GraphMatrix } from '@zodal/graph-table';
 <GraphMatrix graph={graph} />;           // seriated adjacency matrix as a heat-cell grid
 ```
 
+Pass `@zodal/graph-ui`'s shared view store as `view` to link either lens to the others:
+`<GraphTable view={store}>` adds a checkbox column bound to the shared selection (`selectable={false}`
+drops it), leaves out the rows a `'hide'` filter removes, dims those only `'fade'` filters drop, and
+reports row hover; `<GraphMatrix view={store}>` highlights the shared selection and writes its band
+and cell clicks back.
+
 `<GraphTable>` builds its columns from `inferColumns` and is sortable (click a header); object cells are
 JSON-stringified. `<GraphMatrix>` seriates by Cuthill–McKee by default (cluster blocks on the diagonal),
 cell opacity ∝ weight. Both are presentational and themeable via the `zodal-table` / `zodal-matrix`
